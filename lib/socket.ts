@@ -47,7 +47,7 @@ class SocketManager {
 
   private setupBroadcastChannel(): void {
     try {
-      if ('BroadcastChannel' in window && STREAM_CONFIG.FALLBACK.enableBroadcastChannel) {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window && STREAM_CONFIG.FALLBACK.enableBroadcastChannel) {
         this.broadcastChannel = new BroadcastChannel('livestream-socket')
         
         this.broadcastChannel.addEventListener('message', (event) => {
