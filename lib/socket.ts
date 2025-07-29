@@ -624,7 +624,7 @@ class SocketManager {
           reject(new Error(error.message || 'Failed to start stream'))
         })
 
-        // Emit the start broadcast event
+        // Emit the start broadcast event - Fixed to use only 2 parameters
         this.socket.emit('start-broadcast', {
           streamType,
           timestamp: new Date().toISOString(),
@@ -697,6 +697,7 @@ class SocketManager {
     
     if (this.socket?.connected || this.fallbackMode) {
       const answerData = { answer, targetId }
+      // Fixed to use only 2 parameters instead of 4
       this.socket?.emit('stream-answer', answerData)
     }
   }
