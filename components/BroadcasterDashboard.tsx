@@ -20,81 +20,137 @@ export default function BroadcasterDashboard() {
 
   const [currentSession, setCurrentSession] = useState<StreamSession | undefined>(undefined)
   const [webrtcSupported, setWebrtcSupported] = useState(true)
+  const [connectionState, setConnectionState] = useState<string>('disconnected')
   const streamRef = useRef<MediaStream | null>(null)
   const webcamStreamRef = useRef<MediaStream | null>(null)
   const screenStreamRef = useRef<MediaStream | null>(null)
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
+  const connectionRetryRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     // Check WebRTC support
     setWebrtcSupported(checkWebRTCSupport())
 
-    // Connect socket
-    try {
-      const socket = socketManager.connect()
-      console.log('Socket connection initiated')
-
-      // Setup socket event listeners
-      socketManager.onStreamStarted((data) => {
-        console.log('Stream started event received:', data)
-        const session: StreamSession = {
-          id: data.sessionId,
-          slug: `session-${data.sessionId}`,
-          title: `Stream Session ${data.sessionId}`,
-          type: 'stream-sessions',
-          created_at: new Date().toISOString(),
-          modified_at: new Date().toISOString(),
-          metadata: {
-            start_time: new Date().toISOString(),
-            stream_type: data.streamType,
-            viewer_count: 0,
-            peak_viewers: 0,
-            duration: 0,
-            status: 'live',
-          }
-        }
-        setCurrentSession(session)
-        setStreamState(prev => ({
-          ...prev,
-          isLive: true,
-          isConnecting: false,
-          sessionId: data.sessionId
-        }))
-      })
-
-      socketManager.onStreamEnded((data) => {
-        console.log('Stream ended event received:', data)
-        handleStopStream()
-      })
-
-      socketManager.onViewerCount((count) => {
-        setStreamState(prev => ({ ...prev, viewerCount: count }))
-      })
-
-      socketManager.onStreamError((error) => {
-        console.error('Stream error received:', error)
-        setStreamState(prev => ({
-          ...prev,
-          error: error.message || 'Stream error occurred',
-          isConnecting: false,
-          isLive: false
-        }))
-      })
-
-    } catch (error) {
-      console.error('Failed to initialize socket connection:', error)
-      setStreamState(prev => ({
-        ...prev,
-        error: 'Failed to connect to streaming server. Please try again.',
-        isConnecting: false
-      }))
-    }
+    // Initialize socket connection
+    initializeConnection()
 
     return () => {
+      if (connectionRetryRef.current) {
+        clearTimeout(connectionRetryRef.current)
+      }
       socketManager.disconnect()
       cleanupStreams()
     }
   }, [])
+
+  const initializeConnection = async () => {
+    try {
+      console.log('🔌 Initializing streaming server connection...')
+      setConnectionState('connecting')
+      
+      const socket = socketManager.connect()
+      
+      // Monitor connection state
+      const checkConnection = () => {
+        const state = socketManager.getConnectionState()
+        setConnectionState(state)
+        
+        if (state === 'connected') {
+          console.log('✅ Successfully connected to streaming server')
+          setupSocketEventListeners()
+          setStreamState(prev => ({ ...prev, error: undefined }))
+        } else if (state === 'disconnected' && !socketManager.isConnected()) {
+          console.log('❌ Connection failed, retrying in 5 seconds...')
+          setStreamState(prev => ({
+            ...prev,
+            error: 'Lost connection to streaming server. Attempting to reconnect...'
+          }))
+          
+          // Retry connection after 5 seconds
+          connectionRetryRef.current = setTimeout(() => {
+            initializeConnection()
+          }, 5000)
+        }
+      }
+
+      // Check connection status immediately and then every 2 seconds
+      checkConnection()
+      const connectionInterval = setInterval(checkConnection, 2000)
+
+      // Clean up interval after 30 seconds
+      setTimeout(() => {
+        clearInterval(connectionInterval)
+      }, 30000)
+
+    } catch (error) {
+      console.error('❌ Failed to initialize streaming server connection:', error)
+      setConnectionState('disconnected')
+      setStreamState(prev => ({
+        ...prev,
+        error: 'Failed to connect to streaming server. Please check your internet connection and try refreshing the page.'
+      }))
+    }
+  }
+
+  const setupSocketEventListeners = () => {
+    // Setup socket event listeners
+    socketManager.onStreamStarted((data) => {
+      console.log('✅ Stream started event received:', data)
+      const session: StreamSession = {
+        id: data.sessionId,
+        slug: `session-${data.sessionId}`,
+        title: `Stream Session ${data.sessionId}`,
+        type: 'stream-sessions',
+        created_at: new Date().toISOString(),
+        modified_at: new Date().toISOString(),
+        metadata: {
+          start_time: new Date().toISOString(),
+          stream_type: data.streamType,
+          viewer_count: 0,
+          peak_viewers: 0,
+          duration: 0,
+          status: 'live',
+        }
+      }
+      setCurrentSession(session)
+      setStreamState(prev => ({
+        ...prev,
+        isLive: true,
+        isConnecting: false,
+        sessionId: data.sessionId,
+        error: undefined
+      }))
+    })
+
+    socketManager.onStreamEnded((data) => {
+      console.log('🛑 Stream ended event received:', data)
+      handleStopStream()
+    })
+
+    socketManager.onViewerCount((count) => {
+      setStreamState(prev => ({ ...prev, viewerCount: count }))
+      if (currentSession) {
+        setCurrentSession(prev => prev ? {
+          ...prev,
+          metadata: {
+            ...prev.metadata,
+            viewer_count: count,
+            peak_viewers: Math.max(prev.metadata.peak_viewers || 0, count)
+          }
+        } : prev)
+      }
+    })
+
+    socketManager.onStreamError((error) => {
+      console.error('❌ Stream error received:', error)
+      setStreamState(prev => ({
+        ...prev,
+        error: error.message || 'Stream error occurred',
+        isConnecting: false,
+        isLive: false
+      }))
+    })
+  }
 
   const cleanupStreams = () => {
     if (streamRef.current) {
@@ -127,12 +183,16 @@ export default function BroadcasterDashboard() {
     if (!socketManager.isConnected()) {
       setStreamState(prev => ({
         ...prev,
-        error: 'Not connected to streaming server. Please refresh the page.',
+        error: 'Not connected to streaming server. Please wait for connection or refresh the page.',
         isConnecting: false
       }))
+      
+      // Try to reconnect
+      initializeConnection()
       return
     }
 
+    console.log('🚀 Starting stream with type:', streamType)
     setStreamState(prev => ({
       ...prev,
       isConnecting: true,
@@ -145,13 +205,14 @@ export default function BroadcasterDashboard() {
 
       if (streamType === 'both') {
         // Get both webcam and screen streams
+        console.log('📹 Getting webcam and screen streams...')
         const [webcamStream, screenStream] = await Promise.all([
           getUserMediaStream('webcam').catch(err => {
-            console.warn('Webcam access failed:', err)
+            console.warn('⚠️ Webcam access failed:', err)
             return null
           }),
           getUserMediaStream('screen').catch(err => {
-            console.warn('Screen access failed:', err)
+            console.warn('⚠️ Screen access failed:', err)
             return null
           })
         ])
@@ -167,6 +228,7 @@ export default function BroadcasterDashboard() {
         screenStreamRef.current = screenStream
       } else {
         // Get single stream type
+        console.log(`📹 Getting ${streamType} stream...`)
         finalStream = await getUserMediaStream(streamType)
         
         if (streamType === 'webcam') {
@@ -179,6 +241,7 @@ export default function BroadcasterDashboard() {
       streamRef.current = finalStream
 
       // Start socket broadcast and wait for confirmation
+      console.log('📡 Starting socket broadcast...')
       await socketManager.startBroadcast(streamType)
 
       // Update stream state after successful socket broadcast
@@ -188,10 +251,10 @@ export default function BroadcasterDashboard() {
         screenEnabled: streamType === 'screen' || streamType === 'both'
       }))
 
-      console.log('Stream started successfully')
+      console.log('✅ Stream started successfully')
 
     } catch (error) {
-      console.error('Error starting stream:', error)
+      console.error('❌ Error starting stream:', error)
       
       // Clean up any partially created streams
       cleanupStreams()
@@ -202,14 +265,14 @@ export default function BroadcasterDashboard() {
         if (error.message.includes('Permission denied') || error.message.includes('NotAllowedError')) {
           errorMessage += 'Please grant camera and microphone permissions.'
         } else if (error.message.includes('timeout')) {
-          errorMessage += 'Server connection timeout. Please try again.'
-        } else if (error.message.includes('not connected')) {
+          errorMessage += 'Server connection timeout. Please check your internet connection and try again.'
+        } else if (error.message.includes('not connected') || error.message.includes('Not connected')) {
           errorMessage += 'Connection to streaming server lost. Please refresh the page.'
         } else {
           errorMessage += error.message
         }
       } else {
-        errorMessage += 'Unknown error occurred.'
+        errorMessage += 'Unknown error occurred. Please try again.'
       }
 
       setStreamState(prev => ({
@@ -222,6 +285,8 @@ export default function BroadcasterDashboard() {
   }
 
   const handleStopStream = () => {
+    console.log('🛑 Stopping stream...')
+    
     // Stop socket broadcast
     socketManager.stopBroadcast()
 
@@ -238,6 +303,8 @@ export default function BroadcasterDashboard() {
       viewerCount: 0
     })
     setCurrentSession(undefined)
+    
+    console.log('✅ Stream stopped successfully')
   }
 
   const handleToggleWebcam = async () => {
@@ -280,7 +347,7 @@ export default function BroadcasterDashboard() {
         setStreamState(prev => ({ ...prev, webcamEnabled: true }))
       }
     } catch (error) {
-      console.error('Error toggling webcam:', error)
+      console.error('❌ Error toggling webcam:', error)
       setStreamState(prev => ({
         ...prev,
         error: 'Failed to toggle webcam. Please check camera permissions.'
@@ -328,7 +395,7 @@ export default function BroadcasterDashboard() {
         setStreamState(prev => ({ ...prev, screenEnabled: true }))
       }
     } catch (error) {
-      console.error('Error toggling screen share:', error)
+      console.error('❌ Error toggling screen share:', error)
       setStreamState(prev => ({
         ...prev,
         error: 'Failed to toggle screen share. Please try again.'
@@ -375,21 +442,55 @@ export default function BroadcasterDashboard() {
               <svg className="w-5 h-5 text-red-400 mt-0.5 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
-              <p className="text-red-800 text-sm">{streamState.error}</p>
+              <div>
+                <p className="text-red-800 text-sm font-medium">{streamState.error}</p>
+                {streamState.error.includes('refresh') && (
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="mt-2 text-sm text-red-600 underline hover:text-red-800"
+                  >
+                    Refresh Page Now
+                  </button>
+                )}
+                {streamState.error.includes('connection') && !streamState.error.includes('refresh') && (
+                  <button
+                    onClick={initializeConnection}
+                    className="mt-2 text-sm text-red-600 underline hover:text-red-800"
+                  >
+                    Try Reconnecting
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
 
-        {/* Socket Connection Status */}
+        {/* Enhanced Connection Status */}
         <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">Server Connection:</span>
-            <span className={`text-sm font-medium ${
-              socketManager.isConnected() ? 'text-green-600' : 'text-red-600'
-            }`}>
-              {socketManager.isConnected() ? 'Connected' : 'Disconnected'}
-            </span>
+            <span className="text-sm text-gray-600">Streaming Server:</span>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${
+                connectionState === 'connected' ? 'bg-green-500' : 
+                connectionState === 'connecting' ? 'bg-yellow-500 animate-pulse' : 
+                'bg-red-500'
+              }`}></div>
+              <span className={`text-sm font-medium ${
+                connectionState === 'connected' ? 'text-green-600' : 
+                connectionState === 'connecting' ? 'text-yellow-600' : 
+                'text-red-600'
+              }`}>
+                {connectionState === 'connected' ? 'Connected' : 
+                 connectionState === 'connecting' ? 'Connecting...' : 
+                 'Disconnected'}
+              </span>
+            </div>
           </div>
+          {socketManager.getSocketId() && (
+            <div className="mt-1 text-xs text-gray-500">
+              Socket ID: {socketManager.getSocketId()}
+            </div>
+          )}
         </div>
       </div>
 
