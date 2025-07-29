@@ -62,7 +62,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
     socketManager.onStreamError((error) => {
       setViewerState(prev => ({
         ...prev,
-        error,
+        error: error.message || 'Stream error occurred',
         isConnecting: false
       }))
     })
@@ -82,7 +82,11 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
       error: undefined
     }))
 
-    socketManager.joinStream()
+    // Emit join stream event directly since there's no joinStream method
+    const socket = socketManager.connect()
+    if (socket?.connected) {
+      socket.emit('join-stream')
+    }
   }
 
   const handleStreamOffer = async (offer: RTCSessionDescriptionInit) => {
@@ -117,7 +121,8 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
 
       // Create answer
       const answer = await createAnswer(peerConnection, offer)
-      socketManager.sendStreamAnswer(answer)
+      // Use the correct method name from SocketManager
+      socketManager.sendAnswer(answer, socketManager.getSocketId() || '')
 
     } catch (error) {
       console.error('Error handling stream offer:', error)
@@ -153,7 +158,11 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
   }
 
   const handleDisconnect = () => {
-    socketManager.leaveStream()
+    // Emit leave stream event directly since there's no leaveStream method
+    const socket = socketManager.connect()
+    if (socket?.connected) {
+      socket.emit('leave-stream')
+    }
     handleStreamEnded()
   }
 
