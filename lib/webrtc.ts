@@ -164,12 +164,21 @@ export function stopMediaStream(stream: MediaStream): void {
 
 // Check WebRTC support
 export function checkWebRTCSupport(): boolean {
-  return !!(
-    navigator.mediaDevices &&
-    navigator.mediaDevices.getUserMedia &&
-    navigator.mediaDevices.getDisplayMedia &&
-    window.RTCPeerConnection
-  )
+  try {
+    // Check if the required APIs exist and are callable
+    return !!(
+      typeof navigator !== 'undefined' &&
+      navigator.mediaDevices &&
+      typeof navigator.mediaDevices.getUserMedia === 'function' &&
+      typeof navigator.mediaDevices.getDisplayMedia === 'function' &&
+      typeof window !== 'undefined' &&
+      window.RTCPeerConnection &&
+      typeof window.RTCPeerConnection === 'function'
+    )
+  } catch (error) {
+    console.error('WebRTC support check failed:', error)
+    return false
+  }
 }
 
 // Create stream error
