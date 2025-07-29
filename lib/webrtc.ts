@@ -1,4 +1,4 @@
-import { StreamError, MediaConstraints, RTCConfiguration } from '@/types'
+import { StreamError, MediaConstraints } from '@/types'
 
 // Enhanced WebRTC configuration with multiple STUN/TURN servers
 export const rtcConfiguration: RTCConfiguration = {
@@ -362,15 +362,11 @@ function createStreamError(code: string, message: string, originalError?: any): 
   const error: StreamError = {
     code,
     message,
-    details: originalError
-  }
-  
-  // Add browser and device info for debugging
-  if (typeof navigator !== 'undefined') {
-    error.browserInfo = {
-      userAgent: navigator.userAgent,
-      platform: navigator.platform,
-      language: navigator.language
+    details: originalError,
+    browserInfo: {
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
+      platform: typeof navigator !== 'undefined' ? navigator.platform : 'Unknown', 
+      language: typeof navigator !== 'undefined' ? navigator.language : 'Unknown'
     }
   }
   

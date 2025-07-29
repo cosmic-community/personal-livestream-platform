@@ -26,6 +26,9 @@ class SocketManager {
   private connectionTimeout: NodeJS.Timeout | null = null
   private heartbeatInterval: NodeJS.Timeout | null = null
   private fallbackMode = false
+  private eventCallbacks?: Map<string, Function[]>
+  private triggerEvent?: (event: string, data?: any) => void
+  private fallbackInterval?: NodeJS.Timeout
 
   connect(): Socket {
     if (this.socket?.connected) {
@@ -132,7 +135,9 @@ class SocketManager {
 
       // Custom heartbeat/ping handler
       this.socket.on('ping', () => {
-        this.socket?.emit('pong', { timestamp: Date.now() })
+        if (this.socket) {
+          this.socket.emit('pong', { timestamp: Date.now() })
+        }
       })
 
       // Handle server-side events
@@ -193,23 +198,29 @@ class SocketManager {
         setTimeout(() => {
           switch (event) {
             case 'start-broadcast':
-              this.triggerEvent('stream-started', {
-                sessionId: 'fallback-session-' + Date.now(),
-                streamType: data?.streamType || 'webcam',
-                timestamp: new Date().toISOString()
-              })
+              if (this.triggerEvent) {
+                this.triggerEvent('stream-started', {
+                  sessionId: 'fallback-session-' + Date.now(),
+                  streamType: data?.streamType || 'webcam',
+                  timestamp: new Date().toISOString()
+                })
+              }
               break
               
             case 'stop-broadcast':
-              this.triggerEvent('stream-ended', {
-                sessionId: 'fallback-session',
-                timestamp: new Date().toISOString()
-              })
+              if (this.triggerEvent) {
+                this.triggerEvent('stream-ended', {
+                  sessionId: 'fallback-session',
+                  timestamp: new Date().toISOString()
+                })
+              }
               break
               
             case 'join-stream':
               // Simulate viewer joining
-              this.triggerEvent('viewer-count', Math.floor(Math.random() * 10) + 1)
+              if (this.triggerEvent) {
+                this.triggerEvent('viewer-count', Math.floor(Math.random() * 10) + 1)
+              }
               break
               
             case 'heartbeat':
@@ -258,7 +269,7 @@ class SocketManager {
       
       disconnect: () => {
         console.log('🔌 Fallback socket disconnected')
-        this.connected = false
+        mockSocket.connected = false
       }
     } as any
 
@@ -283,10 +294,6 @@ class SocketManager {
     // Simulate periodic viewer count updates in fallback mode
     this.startFallbackSimulation()
   }
-
-  private eventCallbacks?: Map<string, Function[]>
-  private triggerEvent?: (event: string, data?: any) => void
-  private fallbackInterval?: NodeJS.Timeout
 
   private startFallbackSimulation(): void {
     // Simulate viewer activity in fallback mode
@@ -342,6 +349,23 @@ class SocketManager {
     this.eventCallbacks?.clear()
   }
 
+  // Add the missing methods that were causing TypeScript errors
+  on(event: string, callback: Function): void {
+    if (this.socket) {
+      this.socket.on(event, callback)
+    }
+  }
+
+  off(event: string, callback?: Function): void {
+    if (this.socket) {
+      this.socket.off(event, callback)
+    }
+  }
+
+  get connected(): boolean {
+    return this.socket?.connected || this.fallbackMode || false
+  }
+
   // Broadcasting events
   startBroadcast(streamType: StreamType): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -358,7 +382,7 @@ class SocketManager {
       console.log('🚀 Starting broadcast with type:', streamType)
 
       // Set up one-time listeners for the response
-      const timeout = setTimeout(() => {
+      const timeout: NodeJS.Timeout | undefined = setTimeout(() => {
         this.socket?.off('stream-started')
         this.socket?.off('stream-error')
         if (this.fallbackMode) {
@@ -371,13 +395,17 @@ class SocketManager {
       }, 10000) // 10 second timeout
 
       this.socket.once('stream-started', (data: StreamStartedEvent) => {
-        clearTimeout(timeout)
+        if (timeout) {
+          clearTimeout(timeout)
+        }
         console.log('✅ Stream started successfully:', data)
         resolve()
       })
 
       this.socket.once('stream-error', (error: StreamErrorEvent) => {
-        clearTimeout(timeout)
+        if (timeout) {
+          clearTimeout(timeout)
+        }
         console.error('❌ Stream start failed:', error)
         reject(new Error(error.message || 'Failed to start stream'))
       })
