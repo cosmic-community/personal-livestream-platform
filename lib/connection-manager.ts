@@ -203,7 +203,13 @@ class ConnectionManager {
   private async testServerReachability(): Promise<boolean> {
     try {
       // Test if we can create WebRTC connections
-      const pc = new RTCPeerConnection(STREAM_CONFIG.WEBRTC)
+      // Create a mutable copy of the ice servers configuration
+      const webrtcConfig: RTCConfiguration = {
+        ...STREAM_CONFIG.WEBRTC,
+        iceServers: STREAM_CONFIG.WEBRTC.iceServers.map(server => ({ ...server }))
+      }
+      
+      const pc = new RTCPeerConnection(webrtcConfig)
       pc.createDataChannel('test')
       await pc.createOffer()
       
@@ -401,6 +407,3 @@ class ConnectionManager {
 
 // Export singleton instance
 export const connectionManager = new ConnectionManager()
-
-// Export types
-export type { ConnectionHealth, NetworkStats }

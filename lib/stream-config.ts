@@ -1,5 +1,10 @@
 import { StreamType } from '@/types'
 
+// Define the RTCSdpSemantics type if not available
+declare global {
+  type RTCSdpSemantics = 'plan-b' | 'unified-plan'
+}
+
 // Enhanced streaming configuration with multiple fallback options
 export const STREAM_CONFIG = {
   // Server URLs in priority order
