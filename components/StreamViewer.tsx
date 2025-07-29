@@ -49,7 +49,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
         await handleJoinStream()
       } else {
         // Wait for stream to become available
-        setViewerState(prev => ({
+        setViewerState((prev: ViewerState) => ({
           ...prev,
           isConnecting: false,
           streamAvailable: false
@@ -58,7 +58,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
 
     } catch (error) {
       console.error('❌ Failed to initialize viewer:', error)
-      setViewerState(prev => ({
+      setViewerState((prev: ViewerState) => ({
         ...prev,
         error: 'Failed to initialize viewer. Please refresh the page.',
         isConnecting: false
@@ -79,7 +79,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
     socketManager.onStreamStarted((data) => {
       console.log('✅ Stream started, joining...', data)
       setCurrentSession({ id: data.sessionId } as StreamSession)
-      setViewerState(prev => ({
+      setViewerState((prev: ViewerState) => ({
         ...prev,
         streamAvailable: true,
         error: undefined
@@ -93,7 +93,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
     })
 
     socketManager.onViewerCount((count) => {
-      setViewerState(prev => ({ ...prev, viewerCount: count }))
+      setViewerState((prev: ViewerState) => ({ ...prev, viewerCount: count }))
     })
 
     socketManager.onStreamOffer(async (offer) => {
@@ -109,7 +109,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
 
     socketManager.onStreamError((error) => {
       console.error('❌ Stream error:', error)
-      setViewerState(prev => ({
+      setViewerState((prev: ViewerState) => ({
         ...prev,
         error: error.message || 'Stream error occurred',
         isConnecting: false
@@ -125,7 +125,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
 
     try {
       console.log('🚀 Joining stream...')
-      setViewerState(prev => ({
+      setViewerState((prev: ViewerState) => ({
         ...prev,
         isConnecting: true,
         error: undefined
@@ -153,7 +153,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
       setTimeout(() => {
         if (viewerState.isConnecting && !viewerState.isConnected) {
           console.warn('⏱️ Join stream timeout')
-          setViewerState(prev => ({
+          setViewerState((prev: ViewerState) => ({
             ...prev,
             error: 'Failed to join stream - timeout. Retrying...',
             isConnecting: false
@@ -169,7 +169,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
 
     } catch (error) {
       console.error('❌ Error joining stream:', error)
-      setViewerState(prev => ({
+      setViewerState((prev: ViewerState) => ({
         ...prev,
         error: error instanceof Error ? error.message : 'Failed to join stream',
         isConnecting: false
@@ -196,7 +196,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
         (state) => {
           console.log('🔗 Connection state changed:', state)
           if (state === 'connected') {
-            setViewerState(prev => ({
+            setViewerState((prev: ViewerState) => ({
               ...prev,
               isConnected: true,
               isConnecting: false,
@@ -205,7 +205,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
             reconnectAttemptRef.current = 0 // Reset reconnect attempts
           } else if (state === 'disconnected') {
             console.warn('⚠️ Peer connection disconnected')
-            setViewerState(prev => ({
+            setViewerState((prev: ViewerState) => ({
               ...prev,
               isConnected: false,
               error: 'Connection lost. Attempting to reconnect...'
@@ -217,7 +217,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
                 reconnectAttemptRef.current++
                 handleJoinStream()
               } else {
-                setViewerState(prev => ({
+                setViewerState((prev: ViewerState) => ({
                   ...prev,
                   error: 'Connection lost. Please refresh to retry.'
                 }))
@@ -225,7 +225,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
             }, 3000)
           } else if (state === 'failed') {
             console.error('❌ Peer connection failed')
-            setViewerState(prev => ({
+            setViewerState((prev: ViewerState) => ({
               ...prev,
               isConnected: false,
               error: 'Connection failed. Retrying...'
@@ -269,7 +269,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
 
     } catch (error) {
       console.error('❌ Error handling stream offer:', error)
-      setViewerState(prev => ({
+      setViewerState((prev: ViewerState) => ({
         ...prev,
         error: 'Failed to connect to stream. Please try refreshing.',
         isConnecting: false
@@ -321,7 +321,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
   const handleRetryConnection = () => {
     console.log('🔄 Manual retry requested')
     reconnectAttemptRef.current = 0
-    setViewerState(prev => ({ ...prev, error: undefined }))
+    setViewerState((prev: ViewerState) => ({ ...prev, error: undefined }))
     
     if (currentSession || viewerState.streamAvailable) {
       handleJoinStream()

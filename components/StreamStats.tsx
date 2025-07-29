@@ -18,7 +18,7 @@ export default function StreamStats({ session, isLive, viewerCount }: StreamStat
   const getStreamDuration = (): number => {
     if (!session || !isLive) return 0
     
-    const startTime = new Date(session.metadata.start_time).getTime()
+    const startTime = new Date(session.metadata?.start_time || Date.now()).getTime()
     const currentTime = new Date().getTime()
     return Math.floor((currentTime - startTime) / 1000)
   }
@@ -50,7 +50,7 @@ export default function StreamStats({ session, isLive, viewerCount }: StreamStat
     },
     {
       label: 'Peak Viewers',
-      value: session?.metadata.peak_viewers?.toLocaleString() || '0',
+      value: session?.metadata?.peak_viewers?.toLocaleString() || '0',
       icon: (
         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
           <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
@@ -60,7 +60,7 @@ export default function StreamStats({ session, isLive, viewerCount }: StreamStat
     {
       label: 'Duration',
       value: isLive ? formatDuration(getStreamDuration()) : 
-             session?.metadata.duration ? formatDuration(session.metadata.duration) : '0s',
+             session?.metadata?.duration ? formatDuration(session.metadata.duration) : '0s',
       icon: (
         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />

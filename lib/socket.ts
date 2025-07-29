@@ -26,7 +26,7 @@ class SocketManager {
   private connectionTimeout: NodeJS.Timeout | null = null
   private heartbeatInterval: NodeJS.Timeout | null = null
   private fallbackMode = false
-  private eventCallbacks: Map<string, Function[]> = new Map()
+  private eventCallbacks: Map<string, ((...args: any[]) => void)[]> = new Map()
   private triggerEvent: ((event: string, data?: any) => void) | null = null
   private fallbackInterval: NodeJS.Timeout | null = null
   private currentUrlIndex = 0
@@ -287,7 +287,7 @@ class SocketManager {
         }, 300 + Math.random() * 700) // Random delay 0.3-1s
       },
       
-      on: (event: string, callback: Function) => {
+      on: (event: string, callback: (...args: any[]) => void) => {
         console.log('📥 Fallback listener registered for:', event)
         if (!this.eventCallbacks.has(event)) {
           this.eventCallbacks.set(event, [])
@@ -295,7 +295,7 @@ class SocketManager {
         this.eventCallbacks.get(event)?.push(callback)
       },
       
-      once: (event: string, callback: Function) => {
+      once: (event: string, callback: (...args: any[]) => void) => {
         console.log('📥 Fallback once listener registered for:', event)
         const onceWrapper = (...args: any[]) => {
           callback(...args)
@@ -309,7 +309,7 @@ class SocketManager {
         this.on(event, onceWrapper)
       },
       
-      off: (event: string, callback?: Function) => {
+      off: (event: string, callback?: (...args: any[]) => void) => {
         console.log('📥 Fallback listener removed for:', event)
         if (this.eventCallbacks.has(event)) {
           if (callback) {
@@ -339,7 +339,7 @@ class SocketManager {
     // Set up event triggering
     this.triggerEvent = (event: string, data?: any) => {
       const callbacks = this.eventCallbacks.get(event) || []
-      callbacks.forEach((callback: Function) => {
+      callbacks.forEach((callback: (...args: any[]) => void) => {
         try {
           callback(data)
         } catch (error) {
@@ -421,7 +421,7 @@ class SocketManager {
   }
 
   // Public API methods
-  on(event: string, callback: Function): void {
+  on(event: string, callback: (...args: any[]) => void): void {
     if (this.socket) {
       this.socket.on(event, callback)
     } else if (this.fallbackMode) {
@@ -432,7 +432,7 @@ class SocketManager {
     }
   }
 
-  off(event: string, callback?: Function): void {
+  off(event: string, callback?: (...args: any[]) => void): void {
     if (this.socket) {
       if (callback) {
         this.socket.off(event, callback)

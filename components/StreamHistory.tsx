@@ -68,11 +68,11 @@ export default function StreamHistory({ sessions }: StreamHistoryProps) {
           >
             <div className="flex items-start justify-between mb-2">
               <div className="flex items-center gap-2">
-                <span className={`status-badge ${getStatusColor(session.metadata.status)}`}>
-                  {session.metadata.status.toUpperCase()}
+                <span className={`status-badge ${getStatusColor(session.metadata?.status || 'ended')}`}>
+                  {(session.metadata?.status || 'ended').toUpperCase()}
                 </span>
                 <span className="text-sm text-muted-foreground">
-                  {session.metadata.stream_type}
+                  {session.metadata?.stream_type || 'unknown'}
                 </span>
               </div>
               <span className="text-xs text-muted-foreground">
@@ -84,18 +84,18 @@ export default function StreamHistory({ sessions }: StreamHistoryProps) {
               <div>
                 <span className="text-muted-foreground">Duration:</span>
                 <span className="ml-1 font-medium">
-                  {session.metadata.duration ? formatDuration(session.metadata.duration) : 'In progress'}
+                  {session.metadata?.duration ? formatDuration(session.metadata.duration) : 'In progress'}
                 </span>
               </div>
               <div>
                 <span className="text-muted-foreground">Peak viewers:</span>
                 <span className="ml-1 font-medium">
-                  {session.metadata.peak_viewers || 0}
+                  {session.metadata?.peak_viewers || 0}
                 </span>
               </div>
             </div>
 
-            {session.metadata.status === 'live' && (
+            {session.metadata?.status === 'live' && (
               <div className="mt-2 flex items-center gap-2 text-sm">
                 <div className="live-indicator"></div>
                 <span className="text-red-600 font-medium">Currently streaming</span>

@@ -72,7 +72,7 @@ export default function BroadcasterDashboard() {
     setWebrtcSupported(webrtcOk)
     
     if (!webrtcOk) {
-      setStreamState(prev => ({
+      setStreamState((prev: StreamState) => ({
         ...prev,
         error: 'WebRTC is not supported in your browser. Please use Chrome, Firefox, Safari, or Edge.'
       }))
@@ -123,7 +123,7 @@ export default function BroadcasterDashboard() {
     try {
       console.log('🔌 Initializing streaming server connection...')
       setConnectionState('connecting')
-      setStreamState(prev => ({ ...prev, error: undefined }))
+      setStreamState((prev: StreamState) => ({ ...prev, error: undefined }))
       
       const socket = socketManager.connect()
       
@@ -139,22 +139,22 @@ export default function BroadcasterDashboard() {
         
         if (state === 'connected') {
           console.log('✅ Successfully connected to streaming server')
-          setStreamState(prev => ({ ...prev, error: undefined }))
+          setStreamState((prev: StreamState) => ({ ...prev, error: undefined }))
         } else if (state === 'fallback') {
           console.log('⚠️ Using fallback mode - limited functionality')
-          setStreamState(prev => ({ 
+          setStreamState((prev: StreamState) => ({ 
             ...prev, 
             error: 'Using offline mode - streams will work locally but won\'t be visible to remote viewers'
           }))
         } else if (state === 'connecting') {
           console.log('🔄 Connecting to streaming server...')
-          setStreamState(prev => ({
+          setStreamState((prev: StreamState) => ({
             ...prev,
             error: 'Connecting to streaming server...'
           }))
         } else if (state === 'disconnected') {
           console.log('❌ Connection failed or lost')
-          setStreamState(prev => ({
+          setStreamState((prev: StreamState) => ({
             ...prev,
             error: `Connection failed (tried ${health.reconnectAttempts} times). Retrying automatically...`
           }))
@@ -173,7 +173,7 @@ export default function BroadcasterDashboard() {
     } catch (error) {
       console.error('❌ Failed to initialize streaming server connection:', error)
       setConnectionState('disconnected')
-      setStreamState(prev => ({
+      setStreamState((prev: StreamState) => ({
         ...prev,
         error: 'Failed to initialize connection. Check your internet connection.'
       }))
@@ -190,7 +190,7 @@ export default function BroadcasterDashboard() {
       
       // Check if we need to show specific warnings
       if (health.reconnectAttempts > 2 && state !== 'connected' && state !== 'fallback') {
-        setStreamState(prev => ({
+        setStreamState((prev: StreamState) => ({
           ...prev,
           error: `Connection unstable (${health.reconnectAttempts} reconnect attempts). Current URL: ${health.currentUrl}`
         }))
@@ -210,11 +210,11 @@ export default function BroadcasterDashboard() {
       console.log('✅ Stream started event received:', data)
       const session: StreamSession = {
         id: data.sessionId,
-        slug: `session-${data.sessionId}`,
         title: `Live Stream - ${new Date().toLocaleString()}`,
         type: 'stream-sessions',
         created_at: new Date().toISOString(),
         modified_at: new Date().toISOString(),
+        status: 'published',
         metadata: {
           start_time: new Date().toISOString(),
           stream_type: data.streamType,
@@ -225,7 +225,7 @@ export default function BroadcasterDashboard() {
         }
       }
       setCurrentSession(session)
-      setStreamState(prev => ({
+      setStreamState((prev: StreamState) => ({
         ...prev,
         isLive: true,
         isConnecting: false,
@@ -240,9 +240,9 @@ export default function BroadcasterDashboard() {
     })
 
     socketManager.onViewerCount((count) => {
-      setStreamState(prev => ({ ...prev, viewerCount: count }))
+      setStreamState((prev: StreamState) => ({ ...prev, viewerCount: count }))
       if (currentSession) {
-        setCurrentSession(prev => prev ? {
+        setCurrentSession((prev: StreamSession | undefined) => prev ? {
           ...prev,
           metadata: {
             ...prev.metadata,
@@ -255,7 +255,7 @@ export default function BroadcasterDashboard() {
 
     socketManager.onStreamError((error) => {
       console.error('❌ Stream error received:', error)
-      setStreamState(prev => ({
+      setStreamState((prev: StreamState) => ({
         ...prev,
         error: error.message || 'Stream error occurred',
         isConnecting: false,
@@ -284,7 +284,7 @@ export default function BroadcasterDashboard() {
 
   const handleStartStream = async (streamType: StreamType) => {
     if (!webrtcSupported) {
-      setStreamState(prev => ({
+      setStreamState((prev: StreamState) => ({
         ...prev,
         error: 'WebRTC is not supported in your browser. Please use a modern browser.'
       }))
@@ -293,7 +293,7 @@ export default function BroadcasterDashboard() {
 
     // Check socket connection first
     if (!socketManager.isConnected()) {
-      setStreamState(prev => ({
+      setStreamState((prev: StreamState) => ({
         ...prev,
         error: 'Not connected to streaming server. Attempting to reconnect...',
         isConnecting: false
@@ -312,7 +312,7 @@ export default function BroadcasterDashboard() {
     }
 
     console.log('🚀 Starting stream with type:', streamType)
-    setStreamState(prev => ({
+    setStreamState((prev: StreamState) => ({
       ...prev,
       isConnecting: true,
       error: undefined,
@@ -322,7 +322,7 @@ export default function BroadcasterDashboard() {
     try {
       let finalStream: MediaStream
 
-      if (streamType === 'both') {
+      if (streamType === 'both' || streamType === 'combined') {
         // Get both webcam and screen streams
         console.log('📹 Getting webcam and screen streams...')
         const streamPromises = [
@@ -345,8 +345,8 @@ export default function BroadcasterDashboard() {
         const streams = [webcamStream, screenStream].filter(Boolean) as MediaStream[]
         finalStream = await combineStreams(streams)
         
-        webcamStreamRef.current = webcamStream
-        screenStreamRef.current = screenStream
+        webcamStreamRef.current = webcamStream || null
+        screenStreamRef.current = screenStream || null
       } else {
         // Get single stream type
         console.log(`📹 Getting ${streamType} stream...`)
@@ -366,10 +366,10 @@ export default function BroadcasterDashboard() {
       await socketManager.startBroadcast(streamType)
 
       // Update stream state after successful socket broadcast
-      setStreamState(prev => ({
+      setStreamState((prev: StreamState) => ({
         ...prev,
-        webcamEnabled: streamType === 'webcam' || streamType === 'both',
-        screenEnabled: streamType === 'screen' || streamType === 'both'
+        webcamEnabled: streamType === 'webcam' || streamType === 'both' || streamType === 'combined',
+        screenEnabled: streamType === 'screen' || streamType === 'both' || streamType === 'combined'
       }))
 
       console.log('✅ Stream started successfully')
@@ -400,7 +400,7 @@ export default function BroadcasterDashboard() {
         errorMessage += 'Unknown error occurred. Please try again or refresh the page.'
       }
 
-      setStreamState(prev => ({
+      setStreamState((prev: StreamState) => ({
         ...prev,
         error: errorMessage,
         isConnecting: false,
@@ -454,7 +454,7 @@ export default function BroadcasterDashboard() {
           })
         }
         
-        setStreamState(prev => ({ ...prev, webcamEnabled: false }))
+        setStreamState((prev: StreamState) => ({ ...prev, webcamEnabled: false }))
       } else {
         // Enable webcam - add webcam stream
         const webcamStream = await getUserMediaStream('webcam')
@@ -468,11 +468,11 @@ export default function BroadcasterDashboard() {
           })
         }
         
-        setStreamState(prev => ({ ...prev, webcamEnabled: true }))
+        setStreamState((prev: StreamState) => ({ ...prev, webcamEnabled: true }))
       }
     } catch (error) {
       console.error('❌ Error toggling webcam:', error)
-      setStreamState(prev => ({
+      setStreamState((prev: StreamState) => ({
         ...prev,
         error: 'Failed to toggle webcam. Please check camera permissions and try again.'
       }))
@@ -501,7 +501,7 @@ export default function BroadcasterDashboard() {
           })
         }
         
-        setStreamState(prev => ({ ...prev, screenEnabled: false }))
+        setStreamState((prev: StreamState) => ({ ...prev, screenEnabled: false }))
       } else {
         // Enable screen share - add screen stream
         const screenStream = await getUserMediaStream('screen')
@@ -515,11 +515,11 @@ export default function BroadcasterDashboard() {
           })
         }
         
-        setStreamState(prev => ({ ...prev, screenEnabled: true }))
+        setStreamState((prev: StreamState) => ({ ...prev, screenEnabled: true }))
       }
     } catch (error) {
       console.error('❌ Error toggling screen share:', error)
-      setStreamState(prev => ({
+      setStreamState((prev: StreamState) => ({
         ...prev,
         error: 'Failed to toggle screen share. Please check permissions and try again.'
       }))
@@ -754,7 +754,7 @@ export default function BroadcasterDashboard() {
                     </button>
                   )}
                   <button
-                    onClick={() => setStreamState(prev => ({ ...prev, error: undefined }))}
+                    onClick={() => setStreamState((prev: StreamState) => ({ ...prev, error: undefined }))}
                     className="text-sm text-red-600 underline hover:text-red-800"
                   >
                     Dismiss

@@ -56,7 +56,7 @@ export async function endStreamSession(sessionId: string): Promise<StreamSession
   try {
     // Get current session to calculate duration
     const currentSession = await getStreamSession(sessionId)
-    const startTime = new Date(currentSession.metadata.start_time)
+    const startTime = new Date(currentSession.metadata?.start_time || Date.now())
     const duration = Math.floor((new Date(endTime).getTime() - startTime.getTime()) / 1000)
     
     const response = await cosmic.objects.updateOne(sessionId, {
@@ -215,7 +215,7 @@ export async function updateStreamSettings(
         metadata: {
           default_stream_type: 'webcam',
           auto_start_enabled: false,
-          stream_quality: 'medium',
+          stream_quality: 'medium' as 'low' | 'medium' | 'high',
           enable_analytics: true,
           notification_settings: {
             email_on_stream_start: false,
