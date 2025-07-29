@@ -42,17 +42,22 @@ export default function BroadcasterDashboard() {
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
   const connectionRetryRef = useRef<NodeJS.Timeout | null>(null)
   const systemCheckRef = useRef<NodeJS.Timeout | null>(null)
+  const connectionHealthRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     // Initialize system checks
     initializeSystem()
 
     return () => {
+      // Cleanup
       if (connectionRetryRef.current) {
         clearTimeout(connectionRetryRef.current)
       }
       if (systemCheckRef.current) {
         clearTimeout(systemCheckRef.current)
+      }
+      if (connectionHealthRef.current) {
+        clearInterval(connectionHealthRef.current)
       }
       socketManager.disconnect()
       cleanupStreams()
@@ -69,7 +74,7 @@ export default function BroadcasterDashboard() {
     if (!webrtcOk) {
       setStreamState(prev => ({
         ...prev,
-        error: 'WebRTC is not supported in your browser. Please use Chrome, Firefox, or Safari.'
+        error: 'WebRTC is not supported in your browser. Please use Chrome, Firefox, Safari, or Edge.'
       }))
       return
     }
@@ -79,6 +84,9 @@ export default function BroadcasterDashboard() {
     
     // Initialize connection
     await initializeConnection()
+    
+    // Start connection health monitoring
+    startConnectionHealthMonitoring()
   }
 
   const runSystemChecks = async () => {
@@ -96,7 +104,8 @@ export default function BroadcasterDashboard() {
       if (!deviceInfo.hasCamera) permissions.push('No camera device found')
       if (!deviceInfo.hasMicrophone) permissions.push('No microphone device found')
       if (!networkInfo.online) permissions.push('Network connection offline')
-      if (networkInfo.latency > 5000) permissions.push('High network latency detected')
+      if (networkInfo.latency > 3000) permissions.push('High network latency detected')
+      if (!networkInfo.canReachStun) permissions.push('Cannot reach STUN servers (may affect connectivity)')
 
       setSystemCheck({
         devices: deviceInfo,
@@ -118,41 +127,45 @@ export default function BroadcasterDashboard() {
       
       const socket = socketManager.connect()
       
-      // Monitor connection state
-      const checkConnection = () => {
+      // Setup socket event listeners immediately
+      setupSocketEventListeners()
+      
+      // Monitor connection state changes
+      const monitorConnection = () => {
         const state = socketManager.getConnectionState()
+        const health = socketManager.getConnectionHealth()
+        
         setConnectionState(state)
         
         if (state === 'connected') {
           console.log('✅ Successfully connected to streaming server')
-          setupSocketEventListeners()
           setStreamState(prev => ({ ...prev, error: undefined }))
         } else if (state === 'fallback') {
           console.log('⚠️ Using fallback mode - limited functionality')
-          setupSocketEventListeners()
           setStreamState(prev => ({ 
             ...prev, 
             error: 'Using offline mode - streams will work locally but won\'t be visible to remote viewers'
           }))
-        } else if (state === 'disconnected' && !socketManager.isConnected()) {
-          console.log('❌ Connection failed, retrying in 5 seconds...')
+        } else if (state === 'connecting') {
+          console.log('🔄 Connecting to streaming server...')
           setStreamState(prev => ({
             ...prev,
-            error: 'Connection to streaming server lost. Retrying automatically...'
+            error: 'Connecting to streaming server...'
           }))
-          
-          // Retry connection after 5 seconds
-          connectionRetryRef.current = setTimeout(() => {
-            initializeConnection()
-          }, 5000)
+        } else if (state === 'disconnected') {
+          console.log('❌ Connection failed or lost')
+          setStreamState(prev => ({
+            ...prev,
+            error: `Connection failed (tried ${health.reconnectAttempts} times). Retrying automatically...`
+          }))
         }
       }
 
-      // Check connection status immediately and then every 3 seconds
-      checkConnection()
-      const connectionInterval = setInterval(checkConnection, 3000)
+      // Check connection immediately and set up monitoring
+      monitorConnection()
+      const connectionInterval = setInterval(monitorConnection, 2000)
 
-      // Clean up interval after 30 seconds
+      // Clean up monitoring after 30 seconds
       setTimeout(() => {
         clearInterval(connectionInterval)
       }, 30000)
@@ -162,13 +175,37 @@ export default function BroadcasterDashboard() {
       setConnectionState('disconnected')
       setStreamState(prev => ({
         ...prev,
-        error: 'Failed to connect to streaming server. Check your internet connection or try refreshing the page.'
+        error: 'Failed to initialize connection. Check your internet connection.'
       }))
     }
   }
 
+  const startConnectionHealthMonitoring = () => {
+    connectionHealthRef.current = setInterval(() => {
+      const health = socketManager.getConnectionHealth()
+      const state = socketManager.getConnectionState()
+      
+      // Update connection state
+      setConnectionState(state)
+      
+      // Check if we need to show specific warnings
+      if (health.reconnectAttempts > 2 && state !== 'connected' && state !== 'fallback') {
+        setStreamState(prev => ({
+          ...prev,
+          error: `Connection unstable (${health.reconnectAttempts} reconnect attempts). Current URL: ${health.currentUrl}`
+        }))
+      }
+    }, 5000) // Check every 5 seconds
+  }
+
   const setupSocketEventListeners = () => {
-    // Setup socket event listeners
+    // Clear existing listeners to prevent duplicates
+    socketManager.off('stream-started')
+    socketManager.off('stream-ended')
+    socketManager.off('viewer-count')
+    socketManager.off('stream-error')
+
+    // Setup new listeners
     socketManager.onStreamStarted((data) => {
       console.log('✅ Stream started event received:', data)
       const session: StreamSession = {
@@ -258,12 +295,19 @@ export default function BroadcasterDashboard() {
     if (!socketManager.isConnected()) {
       setStreamState(prev => ({
         ...prev,
-        error: 'Not connected to streaming server. Please wait for connection or refresh the page.',
+        error: 'Not connected to streaming server. Attempting to reconnect...',
         isConnecting: false
       }))
       
-      // Try to reconnect
-      initializeConnection()
+      // Force reconnection
+      socketManager.forceReconnect()
+      
+      // Wait a bit and try again
+      setTimeout(() => {
+        if (socketManager.isConnected()) {
+          handleStartStream(streamType)
+        }
+      }, 3000)
       return
     }
 
@@ -281,7 +325,7 @@ export default function BroadcasterDashboard() {
       if (streamType === 'both') {
         // Get both webcam and screen streams
         console.log('📹 Getting webcam and screen streams...')
-        const [webcamStream, screenStream] = await Promise.all([
+        const streamPromises = [
           getUserMediaStream('webcam').catch(err => {
             console.warn('⚠️ Webcam access failed:', err)
             return null
@@ -290,7 +334,9 @@ export default function BroadcasterDashboard() {
             console.warn('⚠️ Screen access failed:', err)
             return null
           })
-        ])
+        ]
+
+        const [webcamStream, screenStream] = await Promise.all(streamPromises)
 
         if (!webcamStream && !screenStream) {
           throw new Error('Failed to access both camera and screen. Please check permissions and try again.')
@@ -338,15 +384,15 @@ export default function BroadcasterDashboard() {
       
       if (error instanceof Error) {
         if (error.message.includes('Permission denied') || error.message.includes('NotAllowedError')) {
-          errorMessage += 'Please allow camera and microphone permissions in your browser settings.'
+          errorMessage += 'Please allow camera and microphone permissions in your browser settings and try again.'
         } else if (error.message.includes('timeout')) {
           errorMessage += 'Server connection timeout. Please check your internet connection and try again.'
         } else if (error.message.includes('not connected') || error.message.includes('Not connected')) {
-          errorMessage += 'Connection to streaming server lost. Please refresh the page.'
+          errorMessage += 'Connection to streaming server lost. Please wait for reconnection or refresh the page.'
         } else if (error.message.includes('NotFoundError')) {
-          errorMessage += 'Camera or microphone not found. Please check your devices.'
+          errorMessage += 'Camera or microphone not found. Please check your devices are connected.'
         } else if (error.message.includes('NotReadableError')) {
-          errorMessage += 'Camera or microphone is in use by another application.'
+          errorMessage += 'Camera or microphone is in use by another application. Please close other applications and try again.'
         } else {
           errorMessage += error.message
         }
@@ -414,11 +460,10 @@ export default function BroadcasterDashboard() {
         const webcamStream = await getUserMediaStream('webcam')
         webcamStreamRef.current = webcamStream
         
-        const videoTracks = webcamStream.getVideoTracks()
-        const audioTracks = webcamStream.getAudioTracks()
+        const tracks = webcamStream.getTracks()
         
         if (streamRef.current) {
-          [...videoTracks, ...audioTracks].forEach(track => {
+          tracks.forEach(track => {
             streamRef.current?.addTrack(track)
           })
         }
@@ -462,11 +507,10 @@ export default function BroadcasterDashboard() {
         const screenStream = await getUserMediaStream('screen')
         screenStreamRef.current = screenStream
         
-        const videoTracks = screenStream.getVideoTracks()
-        const audioTracks = screenStream.getAudioTracks()
+        const tracks = screenStream.getTracks()
         
         if (streamRef.current) {
-          [...videoTracks, ...audioTracks].forEach(track => {
+          tracks.forEach(track => {
             streamRef.current?.addTrack(track)
           })
         }
@@ -483,11 +527,17 @@ export default function BroadcasterDashboard() {
   }
 
   const handleRetryConnection = () => {
+    console.log('🔄 Manual connection retry requested')
+    socketManager.forceReconnect()
     initializeConnection()
   }
 
   const handleRunSystemCheck = () => {
     runSystemChecks()
+  }
+
+  const handleRefreshPage = () => {
+    window.location.reload()
   }
 
   if (!webrtcSupported) {
@@ -506,7 +556,7 @@ export default function BroadcasterDashboard() {
             Your browser doesn't support WebRTC streaming. Please use a modern browser like Chrome, Firefox, Safari, or Edge.
           </p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={handleRefreshPage}
             className="btn btn-primary"
           >
             Refresh Page
@@ -522,12 +572,22 @@ export default function BroadcasterDashboard() {
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">System Status</h2>
-          <button
-            onClick={handleRunSystemCheck}
-            className="btn btn-sm btn-outline"
-          >
-            Run Check
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleRunSystemCheck}
+              className="btn btn-sm btn-outline"
+            >
+              Run Check
+            </button>
+            {connectionState === 'disconnected' && (
+              <button
+                onClick={handleRetryConnection}
+                className="btn btn-sm btn-primary"
+              >
+                Retry Connection
+              </button>
+            )}
+          </div>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -556,7 +616,12 @@ export default function BroadcasterDashboard() {
               </span>
               {socketManager.isFallbackMode() && (
                 <div className="text-xs text-yellow-600 mt-1">
-                  Limited functionality - refresh to retry
+                  Limited functionality - streams work locally only
+                </div>
+              )}
+              {connectionState === 'connected' && (
+                <div className="text-xs text-green-600 mt-1">
+                  Ready for live streaming
                 </div>
               )}
             </div>
@@ -580,6 +645,9 @@ export default function BroadcasterDashboard() {
                   </div>
                   <div className={systemCheck.devices.hasMicrophone ? 'text-green-600' : 'text-red-600'}>
                     🎤 Microphone: {systemCheck.devices.hasMicrophone ? 'Available' : 'Not found'}
+                  </div>
+                  <div className={systemCheck.devices.hasScreen ? 'text-green-600' : 'text-red-600'}>
+                    🖥️ Screen Share: {systemCheck.devices.hasScreen ? 'Available' : 'Not supported'}
                   </div>
                 </div>
               ) : (
@@ -607,7 +675,13 @@ export default function BroadcasterDashboard() {
                   {systemCheck.network.latency > 0 && (
                     <div className={systemCheck.network.latency < 500 ? 'text-green-600' : 
                                    systemCheck.network.latency < 1000 ? 'text-yellow-600' : 'text-red-600'}>
-                      ⚡ Latency: {systemCheck.network.latency}ms
+                      ⚡ Latency: {Math.round(systemCheck.network.latency)}ms
+                    </div>
+                  )}
+                  {systemCheck.network.downloadSpeed && (
+                    <div className={systemCheck.network.downloadSpeed > 1000 ? 'text-green-600' : 
+                                   systemCheck.network.downloadSpeed > 500 ? 'text-yellow-600' : 'text-red-600'}>
+                      📊 Speed: {Math.round(systemCheck.network.downloadSpeed)} Kbps
                     </div>
                   )}
                 </div>
@@ -653,16 +727,17 @@ export default function BroadcasterDashboard() {
               </svg>
               <div className="flex-1">
                 <p className="text-red-800 text-sm font-medium">{streamState.error}</p>
-                <div className="mt-2 space-x-2">
+                <div className="mt-2 flex flex-wrap gap-2">
                   {streamState.error.includes('refresh') && (
                     <button
-                      onClick={() => window.location.reload()}
+                      onClick={handleRefreshPage}
                       className="text-sm text-red-600 underline hover:text-red-800"
                     >
                       Refresh Page
                     </button>
                   )}
-                  {streamState.error.includes('connection') && !streamState.error.includes('refresh') && (
+                  {(streamState.error.includes('connection') || streamState.error.includes('Connection')) && 
+                   !streamState.error.includes('refresh') && (
                     <button
                       onClick={handleRetryConnection}
                       className="text-sm text-red-600 underline hover:text-red-800"
@@ -678,6 +753,12 @@ export default function BroadcasterDashboard() {
                       Check System
                     </button>
                   )}
+                  <button
+                    onClick={() => setStreamState(prev => ({ ...prev, error: undefined }))}
+                    className="text-sm text-red-600 underline hover:text-red-800"
+                  >
+                    Dismiss
+                  </button>
                 </div>
               </div>
             </div>
