@@ -1,9 +1,10 @@
 import BroadcasterDashboard from '@/components/BroadcasterDashboard'
 import StreamHistory from '@/components/StreamHistory'
 import { getRecentStreamSessions } from '@/lib/cosmic'
+import { StreamSession } from '@/types'
 
 export default async function HomePage() {
-  let recentSessions = []
+  let recentSessions: StreamSession[] = []
   
   try {
     recentSessions = await getRecentStreamSessions(5)

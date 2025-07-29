@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { StreamState, StreamType } from '@/types'
+import { StreamState, StreamType, StreamSession } from '@/types'
 import StreamControls from '@/components/StreamControls'
 import StreamPreview from '@/components/StreamPreview'
 import StreamStats from '@/components/StreamStats'
@@ -18,7 +18,7 @@ export default function BroadcasterDashboard() {
     viewerCount: 0
   })
 
-  const [currentSession, setCurrentSession] = useState(null)
+  const [currentSession, setCurrentSession] = useState<string | null>(null)
   const [webrtcSupported, setWebrtcSupported] = useState(true)
   const streamRef = useRef<MediaStream | null>(null)
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map())

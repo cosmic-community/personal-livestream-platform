@@ -152,7 +152,7 @@ class SocketManager {
   }
 
   // Remove event listeners
-  off(event: string, callback?: Function): void {
+  off(event: keyof ServerToClientEvents, callback?: Function): void {
     if (callback) {
       this.socket?.off(event, callback)
     } else {

@@ -68,7 +68,7 @@ export async function endStreamSession(sessionId: string): Promise<StreamSession
     
     return response.object as StreamSession
   } catch (error) {
-    console.error('Error ending stream session:', error)
+    console.error('Error ending stream session:', error instanceof Error ? error.message : String(error))
     throw new Error('Failed to end stream session')
   }
 }
@@ -82,10 +82,10 @@ export async function getStreamSession(sessionId: string): Promise<StreamSession
     
     return response.object as StreamSession
   } catch (error) {
-    if (error.status === 404) {
+    if (error && typeof error === 'object' && 'status' in error && error.status === 404) {
       throw new Error('Stream session not found')
     }
-    console.error('Error fetching stream session:', error)
+    console.error('Error fetching stream session:', error instanceof Error ? error.message : String(error))
     throw new Error('Failed to fetch stream session')
   }
 }
@@ -101,10 +101,10 @@ export async function getCurrentLiveSession(): Promise<StreamSession | null> {
     
     return response.objects.length > 0 ? response.objects[0] as StreamSession : null
   } catch (error) {
-    if (error.status === 404) {
+    if (error && typeof error === 'object' && 'status' in error && error.status === 404) {
       return null
     }
-    console.error('Error fetching current live session:', error)
+    console.error('Error fetching current live session:', error instanceof Error ? error.message : String(error))
     throw new Error('Failed to fetch current live session')
   }
 }
@@ -120,10 +120,10 @@ export async function getRecentStreamSessions(limit: number = 10): Promise<Strea
     
     return response.objects as StreamSession[]
   } catch (error) {
-    if (error.status === 404) {
+    if (error && typeof error === 'object' && 'status' in error && error.status === 404) {
       return []
     }
-    console.error('Error fetching recent sessions:', error)
+    console.error('Error fetching recent sessions:', error instanceof Error ? error.message : String(error))
     throw new Error('Failed to fetch recent sessions')
   }
 }
@@ -148,7 +148,7 @@ export async function recordViewerJoin(sessionId: string, viewerData: {
     
     return response.object as StreamAnalytics
   } catch (error) {
-    console.error('Error recording viewer join:', error)
+    console.error('Error recording viewer join:', error instanceof Error ? error.message : String(error))
     throw new Error('Failed to record viewer join')
   }
 }
@@ -167,7 +167,7 @@ export async function recordViewerLeave(
     
     return response.object as StreamAnalytics
   } catch (error) {
-    console.error('Error recording viewer leave:', error)
+    console.error('Error recording viewer leave:', error instanceof Error ? error.message : String(error))
     throw new Error('Failed to record viewer leave')
   }
 }
@@ -182,10 +182,10 @@ export async function getStreamSettings(): Promise<StreamSettings | null> {
     
     return response.objects.length > 0 ? response.objects[0] as StreamSettings : null
   } catch (error) {
-    if (error.status === 404) {
+    if (error && typeof error === 'object' && 'status' in error && error.status === 404) {
       return null
     }
-    console.error('Error fetching stream settings:', error)
+    console.error('Error fetching stream settings:', error instanceof Error ? error.message : String(error))
     return null
   }
 }
@@ -226,12 +226,7 @@ export async function updateStreamSettings(
       return response.object as StreamSettings
     }
   } catch (error) {
-    console.error('Error updating stream settings:', error)
+    console.error('Error updating stream settings:', error instanceof Error ? error.message : String(error))
     throw new Error('Failed to update stream settings')
   }
-}
-
-// Error helper for Cosmic SDK
-function hasStatus(error: unknown): error is { status: number } {
-  return typeof error === 'object' && error !== null && 'status' in error;
 }
