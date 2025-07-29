@@ -82,10 +82,10 @@ class StreamManager {
       this.config.onError?.(error)
     })
 
-    // Connection health monitoring
-    connectionManager.on('connection-status-changed', (health) => {
+    // Connection health monitoring with proper type handling
+    connectionManager.on('connection-status-changed', (health: any) => {
       log('info', '🔄 Connection status changed', health)
-      if (health.status === 'disconnected' && this.isStreaming) {
+      if (health?.status === 'disconnected' && this.isStreaming) {
         this.handleConnectionLoss()
       }
     })
@@ -277,10 +277,10 @@ class StreamManager {
       if (streams.length > 1) {
         this.currentStream = await combineStreams(streams)
       } else {
-        this.currentStream = streams[0]
+        this.currentStream = streams[0] || null
       }
 
-      log('info', `✅ Acquired ${streamType} stream with ${this.currentStream.getTracks().length} tracks`)
+      log('info', `✅ Acquired ${streamType} stream with ${this.currentStream?.getTracks().length || 0} tracks`)
 
     } catch (error) {
       // Cleanup any partially created streams
@@ -317,9 +317,11 @@ class StreamManager {
       )
 
       // Add stream to peer connection
-      this.currentStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, this.currentStream!)
-      })
+      if (this.currentStream) {
+        this.currentStream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, this.currentStream!)
+        })
+      }
 
       // Set remote description and create answer
       await peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
@@ -381,9 +383,11 @@ class StreamManager {
         pc.getSenders().forEach(sender => pc.removeTrack(sender))
 
         // Add new tracks
-        this.currentStream!.getTracks().forEach(track => {
-          pc.addTrack(track, this.currentStream!)
-        })
+        if (this.currentStream) {
+          this.currentStream.getTracks().forEach(track => {
+            pc.addTrack(track, this.currentStream!)
+          })
+        }
 
         // Create new offer with updated stream
         const offer = await createOffer(pc, this.currentStream!)

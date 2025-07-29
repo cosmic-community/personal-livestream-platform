@@ -1,5 +1,6 @@
 import { socketManager } from '@/lib/socket'
 import { log } from '@/lib/stream-config'
+import { WebRTCOffer, WebRTCAnswer, WebRTCIceCandidate } from '@/types'
 
 export interface SignalingMessage {
   type: 'offer' | 'answer' | 'ice-candidate' | 'join' | 'leave' | 'error'
@@ -43,32 +44,42 @@ class SignalingManager {
 
   private setupSocketListeners(): void {
     // WebRTC Offer
-    socketManager.onStreamOffer((data) => {
-      const { offer, from } = data
+    socketManager.onStreamOffer((data: WebRTCOffer) => {
+      const offer = data.offer || data
+      const from = data.from || 'unknown'
       log('info', `📥 Received WebRTC offer from ${from}`)
       
       if (this.config.onOffer && offer) {
-        this.config.onOffer(offer, from || 'unknown')
+        this.config.onOffer(offer, from)
       }
     })
 
     // WebRTC Answer
-    socketManager.onStreamAnswer((data) => {
-      const { answer, from } = data
+    socketManager.onStreamAnswer((data: WebRTCAnswer) => {
+      const answer = data.answer || data
+      const from = data.from || 'unknown'
       log('info', `📥 Received WebRTC answer from ${from}`)
       
       if (this.config.onAnswer && answer) {
-        this.config.onAnswer(answer, from || 'unknown')
+        this.config.onAnswer(answer, from)
       }
     })
 
     // ICE Candidate
-    socketManager.onIceCandidate((data) => {
-      const { candidate, from } = data
+    socketManager.onIceCandidate((data: WebRTCIceCandidate) => {
+      const candidate = data
+      const from = data.from || 'unknown'
       log('info', `📥 Received ICE candidate from ${from}`)
       
       if (this.config.onIceCandidate && candidate) {
-        this.config.onIceCandidate(candidate, from || 'unknown')
+        // Create proper RTCIceCandidateInit from the data
+        const iceCandidate: RTCIceCandidateInit = {
+          candidate: typeof data === 'string' ? data : data.candidate,
+          sdpMLineIndex: data.sdpMLineIndex,
+          sdpMid: data.sdpMid,
+          usernameFragment: data.usernameFragment
+        }
+        this.config.onIceCandidate(iceCandidate, from)
       }
     })
 

@@ -42,12 +42,14 @@ export interface StreamSession {
 export interface StreamError {
   code: string
   message: string
+  timestamp: string
   details?: any
   browserInfo?: {
     userAgent: string
     platform: string
     language: string
   }
+  context?: any
 }
 
 export interface StreamStats {
@@ -243,4 +245,19 @@ export interface StreamingCapabilities {
   }
   webrtcSupported: boolean
   networkQuality: NetworkConnectivity
+}
+
+// Custom WebRTC message interfaces
+export interface WebRTCOffer extends RTCSessionDescriptionInit {
+  offer?: RTCSessionDescriptionInit
+  from?: string
+}
+
+export interface WebRTCAnswer extends RTCSessionDescriptionInit {
+  answer?: RTCSessionDescriptionInit
+  from?: string
+}
+
+export interface WebRTCIceCandidate extends RTCIceCandidateInit {
+  from?: string
 }

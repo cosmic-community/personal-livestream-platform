@@ -669,15 +669,15 @@ class SocketManager {
     this.on('viewer-count', callback)
   }
 
-  onStreamOffer(callback: (offer: RTCSessionDescriptionInit) => void): void {
+  onStreamOffer(callback: (data: any) => void): void {
     this.on('stream-offer', callback)
   }
 
-  onStreamAnswer(callback: (answer: RTCSessionDescriptionInit) => void): void {
+  onStreamAnswer(callback: (data: any) => void): void {
     this.on('stream-answer', callback)
   }
 
-  onIceCandidate(callback: (candidate: RTCIceCandidateInit) => void): void {
+  onIceCandidate(callback: (data: any) => void): void {
     this.on('ice-candidate', callback)
   }
 
