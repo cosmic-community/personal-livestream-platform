@@ -682,7 +682,7 @@ class SocketManager {
     this.on('ice-candidate', callback)
   }
 
-  // Send WebRTC signaling data - Fixed to use only 2 parameters (event name and data object)
+  // Send WebRTC signaling data - Fixed to use proper 2-parameter format
   sendOffer(offer: RTCSessionDescriptionInit, targetId?: string): void {
     if (this.isDestroyed) return
     
