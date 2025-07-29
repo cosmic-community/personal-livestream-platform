@@ -695,7 +695,6 @@ class SocketManager {
     if (this.isDestroyed) return
     
     if (this.socket?.connected || this.fallbackMode) {
-      // Fixed to use only 2 parameters (event name and data object)
       this.socket?.emit('stream-answer', { answer, targetId })
     }
   }
