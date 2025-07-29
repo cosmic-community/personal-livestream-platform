@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client'
 import { StreamType } from '@/types'
+import { STREAM_CONFIG, log } from '@/lib/stream-config'
 
 interface StreamStartedEvent {
   sessionId: string
@@ -21,7 +22,7 @@ interface StreamErrorEvent {
 class SocketManager {
   private socket: Socket | null = null
   private reconnectAttempts = 0
-  private maxReconnectAttempts = 5
+  private maxReconnectAttempts = STREAM_CONFIG.CONNECTION.maxRetries
   private isConnecting = false
   private connectionTimeout: NodeJS.Timeout | null = null
   private heartbeatInterval: NodeJS.Timeout | null = null
@@ -31,19 +32,43 @@ class SocketManager {
   private fallbackInterval: NodeJS.Timeout | null = null
   private currentUrlIndex = 0
   private connectionPromise: Promise<Socket> | null = null
+  private urlAttempts = 0
+  private broadcastChannel: BroadcastChannel | null = null
+  private isDestroyed = false
 
   private getSocketUrls(): string[] {
-    return [
-      process.env.NEXT_PUBLIC_SOCKET_URL,
-      'wss://livestream-api.cosmicjs.com/socket',
-      'ws://localhost:3001',
-      'ws://localhost:8080',
-      'ws://127.0.0.1:3001',
-      'ws://127.0.0.1:8080'
-    ].filter(Boolean) as string[]
+    return STREAM_CONFIG.SERVER_URLS
+  }
+
+  constructor() {
+    this.setupBroadcastChannel()
+  }
+
+  private setupBroadcastChannel(): void {
+    try {
+      if ('BroadcastChannel' in window && STREAM_CONFIG.FALLBACK.enableBroadcastChannel) {
+        this.broadcastChannel = new BroadcastChannel('livestream-socket')
+        
+        this.broadcastChannel.addEventListener('message', (event) => {
+          const { type, data } = event.data
+          if (this.triggerEvent) {
+            this.triggerEvent(type, data)
+          }
+        })
+        
+        log('info', '📡 Socket BroadcastChannel initialized')
+      }
+    } catch (error) {
+      log('warn', '⚠️ Failed to setup BroadcastChannel', error)
+    }
   }
 
   connect(): Socket {
+    if (this.isDestroyed) {
+      log('warn', 'Attempted to connect destroyed socket manager')
+      return this.socket as Socket
+    }
+
     if (this.socket?.connected) {
       return this.socket
     }
@@ -57,7 +82,7 @@ class SocketManager {
   }
 
   private async establishConnection(): Promise<Socket> {
-    if (this.isConnecting) {
+    if (this.isConnecting || this.isDestroyed) {
       return this.socket as Socket
     }
 
@@ -65,9 +90,24 @@ class SocketManager {
 
     try {
       const socketUrls = this.getSocketUrls()
+      
+      // If we've tried all URLs multiple times, enable fallback
+      if (this.currentUrlIndex >= socketUrls.length) {
+        if (this.urlAttempts >= STREAM_CONFIG.CONNECTION.maxUrlAttempts) {
+          log('warn', 'All connection attempts exhausted, enabling fallback mode')
+          this.enableFallbackMode()
+          return this.socket as Socket
+        } else {
+          // Reset URL index and increment attempt counter
+          this.currentUrlIndex = 0
+          this.urlAttempts++
+          log('info', `Starting URL attempt round ${this.urlAttempts}`)
+        }
+      }
+
       const socketUrl = socketUrls[this.currentUrlIndex] || 'ws://localhost:3001'
       
-      console.log(`🔌 Attempting to connect to streaming server: ${socketUrl} (attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`)
+      log('info', `🔌 Connecting to: ${socketUrl} (URL ${this.currentUrlIndex + 1}/${socketUrls.length}, Attempt ${this.urlAttempts + 1}/${STREAM_CONFIG.CONNECTION.maxUrlAttempts})`)
       
       // Clean up existing socket
       if (this.socket) {
@@ -78,12 +118,12 @@ class SocketManager {
 
       this.socket = io(socketUrl, {
         transports: ['websocket', 'polling'],
-        timeout: 8000,
-        retries: 2,
+        timeout: STREAM_CONFIG.CONNECTION.timeout,
+        retries: 3,
         reconnection: true,
-        reconnectionAttempts: 3,
+        reconnectionAttempts: 2,
         reconnectionDelay: 1000,
-        reconnectionDelayMax: 3000,
+        reconnectionDelayMax: 2000,
         forceNew: true,
         upgrade: true,
         rememberUpgrade: false,
@@ -91,22 +131,30 @@ class SocketManager {
         closeOnBeforeunload: false
       })
 
-      // Set up connection promise that resolves/rejects based on connection outcome
+      // Set up connection promise
       return new Promise((resolve, reject) => {
-        // Connection timeout fallback
+        if (this.isDestroyed) {
+          reject(new Error('Socket manager destroyed'))
+          return
+        }
+
+        // Connection timeout
         this.connectionTimeout = setTimeout(() => {
-          console.warn(`⏱️ Connection timeout for ${socketUrl}`)
+          log('warn', `⏱️ Connection timeout for ${socketUrl}`)
           this.handleConnectionFailure('Connection timeout')
           reject(new Error('Connection timeout'))
-        }, 10000)
+        }, STREAM_CONFIG.CONNECTION.timeout + 2000)
 
         // Success handler
         const onConnect = () => {
-          console.log('✅ Socket connected successfully:', this.socket?.id)
+          if (this.isDestroyed) return
+          
+          log('info', '✅ Socket connected successfully:', this.socket?.id)
           this.isConnecting = false
           this.reconnectAttempts = 0
           this.fallbackMode = false
-          this.currentUrlIndex = 0 // Reset to first URL on success
+          this.currentUrlIndex = 0
+          this.urlAttempts = 0
           this.connectionPromise = null
           
           if (this.connectionTimeout) {
@@ -121,19 +169,23 @@ class SocketManager {
 
         // Error handlers
         const onConnectError = (error: Error) => {
-          console.error(`❌ Socket connection error for ${socketUrl}:`, error.message)
+          if (this.isDestroyed) return
+          
+          log('error', `❌ Socket connection error for ${socketUrl}:`, error.message)
           this.handleConnectionFailure(error.message)
           reject(error)
         }
 
         const onDisconnect = (reason: string) => {
-          console.log('❌ Socket disconnected:', reason)
+          if (this.isDestroyed) return
+          
+          log('warn', '❌ Socket disconnected:', reason)
           this.isConnecting = false
           this.stopHeartbeat()
           
           // Auto-reconnect for certain disconnect reasons
           if (reason === 'io server disconnect' || reason === 'transport close' || reason === 'transport error') {
-            console.log('🔄 Server initiated disconnect, attempting reconnect...')
+            log('info', '🔄 Server initiated disconnect, attempting reconnect...')
             setTimeout(() => this.tryReconnect(), 2000)
           }
         }
@@ -147,7 +199,7 @@ class SocketManager {
       })
 
     } catch (error) {
-      console.error('❌ Failed to initialize socket:', error)
+      log('error', '❌ Failed to initialize socket:', error)
       this.isConnecting = false
       this.connectionPromise = null
       this.handleConnectionFailure('Socket initialization failed')
@@ -156,6 +208,8 @@ class SocketManager {
   }
 
   private handleConnectionFailure(reason: string): void {
+    if (this.isDestroyed) return
+
     if (this.connectionTimeout) {
       clearTimeout(this.connectionTimeout)
       this.connectionTimeout = null
@@ -169,62 +223,79 @@ class SocketManager {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       // Try next URL
       this.currentUrlIndex++
-      if (this.currentUrlIndex < socketUrls.length) {
-        console.log(`🔄 Trying next server URL: ${socketUrls[this.currentUrlIndex]}`)
-        this.reconnectAttempts = 0
+      this.reconnectAttempts = 0
+      
+      if (this.currentUrlIndex < socketUrls.length || this.urlAttempts < STREAM_CONFIG.CONNECTION.maxUrlAttempts - 1) {
+        log('info', `🔄 Trying next connection method...`)
         this.connectionPromise = null
-        setTimeout(() => this.connect(), 1000)
+        setTimeout(() => this.connect(), 1500)
       } else {
-        console.error('❌ All connection attempts failed, enabling fallback mode')
+        log('error', '❌ All connection attempts failed, enabling fallback mode')
         this.enableFallbackMode()
       }
     } else {
-      // Retry same URL
-      console.log(`🔄 Retrying connection in 2 seconds... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+      // Retry same URL with backoff
+      const delay = STREAM_CONFIG.CONNECTION.reconnectBackoff[Math.min(this.reconnectAttempts - 1, STREAM_CONFIG.CONNECTION.reconnectBackoff.length - 1)]
+      log('info', `🔄 Retrying connection in ${delay}ms... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
       this.connectionPromise = null
-      setTimeout(() => this.connect(), 2000)
+      setTimeout(() => this.connect(), delay)
     }
   }
 
   private setupSocketEventHandlers(): void {
-    if (!this.socket) return
+    if (!this.socket || this.isDestroyed) return
 
     this.socket.on('reconnect', (attemptNumber) => {
-      console.log('✅ Socket reconnected after', attemptNumber, 'attempts')
+      if (this.isDestroyed) return
+      log('info', '✅ Socket reconnected after', attemptNumber, 'attempts')
       this.reconnectAttempts = 0
       this.fallbackMode = false
     })
 
     this.socket.on('reconnect_error', (error) => {
-      console.error('❌ Socket reconnection error:', error.message)
+      if (this.isDestroyed) return
+      log('error', '❌ Socket reconnection error:', error.message)
     })
 
     this.socket.on('reconnect_failed', () => {
-      console.error('❌ Socket reconnection failed completely')
+      if (this.isDestroyed) return
+      log('error', '❌ Socket reconnection failed completely')
       this.enableFallbackMode()
     })
 
     // Custom heartbeat/ping handler
     this.socket.on('ping', () => {
-      if (this.socket) {
+      if (this.socket && !this.isDestroyed) {
         this.socket.emit('pong', { timestamp: Date.now() })
       }
     })
 
     // Handle server-side events
     this.socket.on('server-status', (status) => {
-      console.log('📊 Server status:', status)
+      if (!this.isDestroyed) {
+        log('info', '📊 Server status:', status)
+      }
+    })
+
+    this.socket.on('server-heartbeat', (data) => {
+      if (!this.isDestroyed) {
+        log('info', '💓 Server heartbeat:', data.timestamp)
+      }
     })
 
     // Error handling
     this.socket.on('error', (error) => {
-      console.error('❌ Socket error:', error)
+      if (!this.isDestroyed) {
+        log('error', '❌ Socket error:', error)
+      }
     })
   }
 
   private tryReconnect(): void {
+    if (this.isDestroyed) return
+    
     if (this.socket && !this.socket.connected) {
-      console.log('🔄 Attempting manual reconnect...')
+      log('info', '🔄 Attempting manual reconnect...')
       this.socket.connect()
     } else {
       this.connectionPromise = null
@@ -233,7 +304,9 @@ class SocketManager {
   }
 
   private enableFallbackMode(): void {
-    console.log('🔧 Enabling fallback mode - creating mock streaming server')
+    if (this.isDestroyed) return
+    
+    log('info', '🔧 Enabling enhanced fallback mode')
     this.fallbackMode = true
     this.isConnecting = false
     this.connectionPromise = null
@@ -245,16 +318,28 @@ class SocketManager {
       this.socket = null
     }
 
-    // Create enhanced mock socket
+    // Create enhanced mock socket with BroadcastChannel support
     const mockSocket = {
       connected: true,
       id: 'fallback-socket-' + Math.random().toString(36).substr(2, 9),
       
       emit: (event: string, data?: any) => {
-        console.log('📤 Fallback emit:', event, data)
+        if (this.isDestroyed) return
+        log('info', '📤 Fallback emit:', event, data)
+        
+        // Broadcast to other tabs
+        if (this.broadcastChannel) {
+          try {
+            this.broadcastChannel.postMessage({ type: event, data })
+          } catch (error) {
+            log('warn', 'Failed to broadcast via BroadcastChannel', error)
+          }
+        }
         
         // Simulate realistic server responses with delays
         setTimeout(() => {
+          if (this.isDestroyed) return
+          
           switch (event) {
             case 'start-broadcast':
               this.triggerEvent?.('stream-started', {
@@ -273,6 +358,10 @@ class SocketManager {
               
             case 'join-stream':
               // Simulate viewer joining
+              this.triggerEvent?.('stream-joined', {
+                sessionId: data?.sessionId || 'fallback-session',
+                viewerCount: Math.floor(Math.random() * 8) + 1
+              })
               this.triggerEvent?.('viewer-count', Math.floor(Math.random() * 10) + 1)
               break
               
@@ -281,14 +370,18 @@ class SocketManager {
               break
               
             case 'heartbeat':
-              console.log('💓 Fallback heartbeat acknowledged')
+              this.triggerEvent?.('heartbeat-ack', {
+                timestamp: new Date().toISOString(),
+                serverId: 'fallback-server'
+              })
               break
           }
-        }, 300 + Math.random() * 700) // Random delay 0.3-1s
+        }, 200 + Math.random() * 800) // Random delay 0.2-1s
       },
       
       on: (event: string, callback: (...args: any[]) => void) => {
-        console.log('📥 Fallback listener registered for:', event)
+        if (this.isDestroyed) return
+        log('info', '📥 Fallback listener registered for:', event)
         if (!this.eventCallbacks.has(event)) {
           this.eventCallbacks.set(event, [])
         }
@@ -296,7 +389,8 @@ class SocketManager {
       },
       
       once: (event: string, callback: (...args: any[]) => void) => {
-        console.log('📥 Fallback once listener registered for:', event)
+        if (this.isDestroyed) return
+        log('info', '📥 Fallback once listener registered for:', event)
         const onceWrapper = (...args: any[]) => {
           callback(...args)
           // Remove after first call
@@ -310,7 +404,8 @@ class SocketManager {
       },
       
       off: (event: string, callback?: (...args: any[]) => void) => {
-        console.log('📥 Fallback listener removed for:', event)
+        if (this.isDestroyed) return
+        log('info', '📥 Fallback listener removed for:', event)
         if (this.eventCallbacks.has(event)) {
           if (callback) {
             const callbacks = this.eventCallbacks.get(event) || []
@@ -325,12 +420,14 @@ class SocketManager {
       },
       
       removeAllListeners: () => {
-        console.log('📥 Fallback removing all listeners')
+        if (this.isDestroyed) return
+        log('info', '📥 Fallback removing all listeners')
         this.eventCallbacks.clear()
       },
       
       disconnect: () => {
-        console.log('🔌 Fallback socket disconnected')
+        if (this.isDestroyed) return
+        log('info', '🔌 Fallback socket disconnected')
         mockSocket.connected = false
         this.stopFallbackSimulation()
       }
@@ -338,32 +435,43 @@ class SocketManager {
 
     // Set up event triggering
     this.triggerEvent = (event: string, data?: any) => {
+      if (this.isDestroyed) return
       const callbacks = this.eventCallbacks.get(event) || []
       callbacks.forEach((callback: (...args: any[]) => void) => {
         try {
           callback(data)
         } catch (error) {
-          console.error('Error in fallback event callback:', error)
+          log('error', 'Error in fallback event callback:', error)
         }
       })
     }
 
     this.socket = mockSocket
     
-    console.log('✅ Fallback streaming server connected')
+    log('info', '✅ Enhanced fallback streaming server connected')
     
     // Start fallback simulation
     this.startFallbackSimulation()
   }
 
   private startFallbackSimulation(): void {
-    // Simulate viewer activity in fallback mode
+    if (this.isDestroyed) return
+    
+    // Simulate viewer activity and server heartbeats in fallback mode
     this.fallbackInterval = setInterval(() => {
-      if (this.fallbackMode && this.socket?.connected) {
-        const viewerCount = Math.floor(Math.random() * 8) + 1
+      if (this.fallbackMode && this.socket?.connected && !this.isDestroyed) {
+        // Simulate viewer count changes
+        const viewerCount = Math.floor(Math.random() * 12) + 1
         this.triggerEvent?.('viewer-count', viewerCount)
+        
+        // Simulate server heartbeat
+        this.triggerEvent?.('server-heartbeat', {
+          timestamp: new Date().toISOString(),
+          activeStreams: 1,
+          totalConnections: viewerCount + 1
+        })
       }
-    }, 8000) // Update every 8 seconds
+    }, 6000) // Update every 6 seconds
   }
 
   private stopFallbackSimulation(): void {
@@ -374,17 +482,19 @@ class SocketManager {
   }
 
   private startHeartbeat(): void {
+    if (this.isDestroyed) return
+    
     this.stopHeartbeat()
     
     this.heartbeatInterval = setInterval(() => {
-      if (this.socket?.connected) {
+      if (this.socket?.connected && !this.isDestroyed) {
         this.socket.emit('heartbeat', {
           timestamp: new Date().toISOString(),
           clientId: this.socket.id,
           userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Server'
         })
       }
-    }, 25000) // Send heartbeat every 25 seconds
+    }, STREAM_CONFIG.CONNECTION.heartbeatInterval)
   }
 
   private stopHeartbeat(): void {
@@ -395,7 +505,9 @@ class SocketManager {
   }
 
   disconnect(): void {
-    console.log('🔌 Disconnecting socket manager...')
+    log('info', '🔌 Disconnecting socket manager...')
+    
+    this.isDestroyed = true
     
     if (this.connectionTimeout) {
       clearTimeout(this.connectionTimeout)
@@ -411,10 +523,16 @@ class SocketManager {
       this.socket = null
     }
     
+    if (this.broadcastChannel) {
+      this.broadcastChannel.close()
+      this.broadcastChannel = null
+    }
+    
     this.isConnecting = false
     this.reconnectAttempts = 0
     this.fallbackMode = false
     this.currentUrlIndex = 0
+    this.urlAttempts = 0
     this.connectionPromise = null
     this.eventCallbacks.clear()
     this.triggerEvent = null
@@ -422,6 +540,8 @@ class SocketManager {
 
   // Public API methods
   on(event: string, callback: (...args: any[]) => void): void {
+    if (this.isDestroyed) return
+    
     if (this.socket) {
       this.socket.on(event, callback)
     } else if (this.fallbackMode) {
@@ -433,6 +553,8 @@ class SocketManager {
   }
 
   off(event: string, callback?: (...args: any[]) => void): void {
+    if (this.isDestroyed) return
+    
     if (this.socket) {
       if (callback) {
         this.socket.off(event, callback)
@@ -453,12 +575,17 @@ class SocketManager {
   }
 
   get connected(): boolean {
-    return this.socket?.connected || this.fallbackMode || false
+    return (this.socket?.connected || this.fallbackMode) && !this.isDestroyed
   }
 
-  // Broadcasting events
+  // Broadcasting events with enhanced error handling
   startBroadcast(streamType: StreamType): Promise<void> {
     return new Promise((resolve, reject) => {
+      if (this.isDestroyed) {
+        reject(new Error('Socket manager destroyed'))
+        return
+      }
+
       if (!this.socket) {
         reject(new Error('Socket not initialized. Please refresh and try again.'))
         return
@@ -469,30 +596,30 @@ class SocketManager {
         return
       }
 
-      console.log('🚀 Starting broadcast with type:', streamType)
+      log('info', '🚀 Starting broadcast with type:', streamType)
 
       // Set up one-time listeners for the response
       const timeout = setTimeout(() => {
         this.socket?.off('stream-started')
         this.socket?.off('stream-error')
         if (this.fallbackMode) {
-          console.log('✅ Fallback broadcast started successfully')
+          log('info', '✅ Fallback broadcast started successfully')
           resolve()
         } else {
-          reject(new Error('Stream start timeout - server did not respond within 8 seconds'))
+          reject(new Error('Stream start timeout - server did not respond within 6 seconds'))
         }
-      }, 8000) // 8 second timeout
+      }, 6000)
 
       if (this.socket) {
         this.socket.once('stream-started', (data: StreamStartedEvent) => {
           clearTimeout(timeout)
-          console.log('✅ Stream started successfully:', data)
+          log('info', '✅ Stream started successfully:', data)
           resolve()
         })
 
         this.socket.once('stream-error', (error: StreamErrorEvent) => {
           clearTimeout(timeout)
-          console.error('❌ Stream start failed:', error)
+          log('error', '❌ Stream start failed:', error)
           reject(new Error(error.message || 'Failed to start stream'))
         })
 
@@ -513,8 +640,10 @@ class SocketManager {
   }
 
   stopBroadcast(): void {
+    if (this.isDestroyed) return
+    
     if (this.socket) {
-      console.log('🛑 Stopping broadcast')
+      log('info', '🛑 Stopping broadcast')
       this.socket.emit('stop-broadcast', {
         timestamp: new Date().toISOString(),
         clientId: this.socket.id,
@@ -554,18 +683,24 @@ class SocketManager {
 
   // Send WebRTC signaling data
   sendOffer(offer: RTCSessionDescriptionInit, targetId?: string): void {
+    if (this.isDestroyed) return
+    
     if (this.socket?.connected || this.fallbackMode) {
       this.socket?.emit('stream-offer', { offer, targetId })
     }
   }
 
   sendAnswer(answer: RTCSessionDescriptionInit, targetId: string): void {
+    if (this.isDestroyed) return
+    
     if (this.socket?.connected || this.fallbackMode) {
       this.socket?.emit('stream-answer', { answer, targetId })
     }
   }
 
   sendIceCandidate(candidate: RTCIceCandidateInit, targetId?: string): void {
+    if (this.isDestroyed) return
+    
     if (this.socket?.connected || this.fallbackMode) {
       this.socket?.emit('ice-candidate', { candidate, targetId })
     }
@@ -573,7 +708,7 @@ class SocketManager {
 
   // Get connection status
   isConnected(): boolean {
-    return this.socket?.connected || this.fallbackMode || false
+    return (this.socket?.connected || this.fallbackMode) && !this.isDestroyed
   }
 
   getSocketId(): string | undefined {
@@ -581,6 +716,7 @@ class SocketManager {
   }
 
   getConnectionState(): string {
+    if (this.isDestroyed) return 'destroyed'
     if (!this.socket) return 'disconnected'
     if (this.fallbackMode) return 'fallback'
     if (this.isConnecting) return 'connecting'
@@ -589,15 +725,23 @@ class SocketManager {
   }
 
   isFallbackMode(): boolean {
-    return this.fallbackMode
+    return this.fallbackMode && !this.isDestroyed
   }
 
   // Force reconnection
   forceReconnect(): void {
-    console.log('🔄 Force reconnecting...')
+    if (this.isDestroyed) return
+    
+    log('info', '🔄 Force reconnecting...')
     this.disconnect()
+    
+    // Reset state for fresh connection attempt
+    this.isDestroyed = false
+    this.setupBroadcastChannel()
+    
     setTimeout(() => {
       this.currentUrlIndex = 0
+      this.urlAttempts = 0
       this.reconnectAttempts = 0
       this.connect()
     }, 1000)

@@ -16,17 +16,18 @@ export const STREAM_CONFIG = {
     'ws://127.0.0.1:8080'
   ].filter(Boolean) as string[],
 
-  // Connection settings
+  // Connection settings with more aggressive retry
   CONNECTION: {
-    timeout: 10000, // 10 seconds
-    maxRetries: 5,
-    retryDelay: 2000, // 2 seconds
-    heartbeatInterval: 25000, // 25 seconds
-    reconnectBackoff: [1000, 2000, 4000, 8000, 16000], // Progressive backoff
-    healthCheckInterval: 30000 // 30 seconds
+    timeout: 8000, // 8 seconds
+    maxRetries: 8, // More retries
+    retryDelay: 1500, // Faster retries
+    heartbeatInterval: 20000, // 20 seconds
+    reconnectBackoff: [500, 1000, 2000, 3000, 5000], // Faster backoff
+    healthCheckInterval: 15000, // More frequent checks
+    maxUrlAttempts: 3 // Try each URL multiple times
   },
 
-  // WebRTC configuration
+  // WebRTC configuration with more STUN servers
   WEBRTC: {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -35,16 +36,18 @@ export const STREAM_CONFIG = {
       { urls: 'stun:stun3.l.google.com:19302' },
       { urls: 'stun:stun4.l.google.com:19302' },
       { urls: 'stun:global.stun.twilio.com:3478' },
-      { urls: 'stun:stun.cloudflare.com:3478' }
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      { urls: 'stun:stun.services.mozilla.com' },
+      { urls: 'stun:stun.stunprotocol.org:3478' }
     ],
-    iceCandidatePoolSize: 10,
+    iceCandidatePoolSize: 15,
     bundlePolicy: 'max-bundle' as RTCBundlePolicy,
     rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,
     iceTransportPolicy: 'all' as RTCIceTransportPolicy,
     sdpSemantics: 'unified-plan' as RTCSdpSemantics
   },
 
-  // Media constraints for different stream types
+  // Optimized media constraints
   MEDIA_CONSTRAINTS: {
     webcam: {
       video: {
@@ -137,19 +140,22 @@ export const STREAM_CONFIG = {
     SERVER_UNAVAILABLE: 'SERVER_UNAVAILABLE'
   },
 
-  // Fallback behavior settings
+  // Enhanced fallback behavior
   FALLBACK: {
     enableOfflineMode: true,
-    offlineModeTimeout: 15000, // 15 seconds
-    mockViewerRange: [1, 8], // Random viewer count range for fallback
-    mockViewerUpdateInterval: 8000 // 8 seconds
+    enableP2PMode: true, // Enable direct peer-to-peer
+    offlineModeTimeout: 10000, // 10 seconds
+    mockViewerRange: [1, 12], // Wider range
+    mockViewerUpdateInterval: 6000, // 6 seconds
+    enableBroadcastChannel: true // Use BroadcastChannel API
   },
 
   // Development settings
   DEV: {
     enableDetailedLogging: process.env.NODE_ENV === 'development',
     logWebRTCStats: process.env.NODE_ENV === 'development',
-    showConnectionDebugInfo: process.env.NODE_ENV === 'development'
+    showConnectionDebugInfo: process.env.NODE_ENV === 'development',
+    mockStreamingServer: process.env.NODE_ENV === 'development'
   }
 } as const
 
@@ -227,7 +233,7 @@ export function createStreamError(code: string, message: string, context?: any) 
   }
 }
 
-// Logging utility
+// Enhanced logging utility
 export function log(level: 'info' | 'warn' | 'error', message: string, data?: any) {
   if (!STREAM_CONFIG.DEV.enableDetailedLogging && level === 'info') {
     return
@@ -237,4 +243,77 @@ export function log(level: 'info' | 'warn' | 'error', message: string, data?: an
   const timestamp = new Date().toISOString()
   
   console[level](`${emoji} [${timestamp}] ${message}`, data ? data : '')
+}
+
+// Test all connection methods
+export async function testAllConnectionMethods(): Promise<{
+  websocket: boolean;
+  broadcastChannel: boolean;
+  webrtc: boolean;
+  localStorage: boolean;
+}> {
+  const results = {
+    websocket: false,
+    broadcastChannel: false,
+    webrtc: false,
+    localStorage: false
+  }
+
+  // Test WebSocket
+  try {
+    const testSocket = new WebSocket('ws://localhost:3001')
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        testSocket.close()
+        reject(new Error('timeout'))
+      }, 2000)
+      
+      testSocket.onopen = () => {
+        clearTimeout(timeout)
+        testSocket.close()
+        results.websocket = true
+        resolve(undefined)
+      }
+      
+      testSocket.onerror = () => {
+        clearTimeout(timeout)
+        reject(new Error('connection failed'))
+      }
+    })
+  } catch (error) {
+    log('warn', 'WebSocket test failed', error)
+  }
+
+  // Test BroadcastChannel
+  try {
+    if ('BroadcastChannel' in window) {
+      const testChannel = new BroadcastChannel('stream-test')
+      testChannel.close()
+      results.broadcastChannel = true
+    }
+  } catch (error) {
+    log('warn', 'BroadcastChannel test failed', error)
+  }
+
+  // Test WebRTC
+  try {
+    const testPc = new RTCPeerConnection(getWebRTCConfig())
+    await testPc.createOffer()
+    testPc.close()
+    results.webrtc = true
+  } catch (error) {
+    log('warn', 'WebRTC test failed', error)
+  }
+
+  // Test localStorage
+  try {
+    localStorage.setItem('stream-test', 'test')
+    localStorage.removeItem('stream-test')
+    results.localStorage = true
+  } catch (error) {
+    log('warn', 'localStorage test failed', error)
+  }
+
+  log('info', 'Connection method test results', results)
+  return results
 }
