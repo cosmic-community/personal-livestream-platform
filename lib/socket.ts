@@ -624,7 +624,7 @@ class SocketManager {
           reject(new Error(error.message || 'Failed to start stream'))
         })
 
-        // Emit the start broadcast event - Fixed to use only 2 parameters
+        // Emit the start broadcast event with proper data structure
         this.socket.emit('start-broadcast', {
           streamType,
           timestamp: new Date().toISOString(),
@@ -682,13 +682,12 @@ class SocketManager {
     this.on('ice-candidate', callback)
   }
 
-  // Send WebRTC signaling data - Fixed to use proper typing for the data parameter
+  // Send WebRTC signaling data - Fixed to use only 2 parameters (event name and data object)
   sendOffer(offer: RTCSessionDescriptionInit, targetId?: string): void {
     if (this.isDestroyed) return
     
     if (this.socket?.connected || this.fallbackMode) {
-      const offerData = { offer, targetId }
-      this.socket?.emit('stream-offer', offerData)
+      this.socket?.emit('stream-offer', { offer, targetId })
     }
   }
 
@@ -696,9 +695,8 @@ class SocketManager {
     if (this.isDestroyed) return
     
     if (this.socket?.connected || this.fallbackMode) {
-      const answerData = { answer, targetId }
-      // Fixed to use only 2 parameters instead of 4
-      this.socket?.emit('stream-answer', answerData)
+      // Fixed to use only 2 parameters (event name and data object)
+      this.socket?.emit('stream-answer', { answer, targetId })
     }
   }
 
