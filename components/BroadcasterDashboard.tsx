@@ -34,9 +34,19 @@ export default function BroadcasterDashboard() {
     socketManager.onStreamStarted((data) => {
       const session: StreamSession = {
         id: data.sessionId,
-        streamType: data.streamType,
-        startTime: new Date(),
-        isActive: true
+        slug: `session-${data.sessionId}`,
+        title: `Stream Session ${data.sessionId}`,
+        type: 'stream-sessions',
+        created_at: new Date().toISOString(),
+        modified_at: new Date().toISOString(),
+        metadata: {
+          start_time: new Date().toISOString(),
+          stream_type: data.streamType,
+          viewer_count: 0,
+          peak_viewers: 0,
+          duration: 0,
+          status: 'live',
+        }
       }
       setCurrentSession(session)
       setStreamState(prev => ({
