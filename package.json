@@ -3,9 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:client": "next dev",
+    "dev:server": "cd server && npm run dev",
     "build": "next build",
     "start": "next start",
+    "start:server": "cd server && npm start",
+    "install:server": "cd server && npm install",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "prebuild": "bun run type-check"
@@ -22,6 +26,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^8.2.2",
     "eslint": "^8.57.1",
     "eslint-config-next": "15.0.3",
     "postcss": "^8.4.49",
