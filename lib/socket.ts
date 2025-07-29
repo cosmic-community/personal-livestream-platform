@@ -152,7 +152,7 @@ class SocketManager {
   }
 
   // Remove event listeners
-  off(event: keyof ServerToClientEvents, callback?: Function): void {
+  off(event: keyof ServerToClientEvents, callback?: (data: { sessionId: string; streamType: 'webcam' | 'screen' | 'both' }) => void | ((data: { sessionId: string }) => void) | ((count: number) => void) | ((offer: RTCSessionDescriptionInit) => void) | ((answer: RTCSessionDescriptionInit) => void) | ((candidate: RTCIceCandidateInit) => void) | ((error: string) => void)): void {
     if (callback) {
       this.socket?.off(event, callback)
     } else {

@@ -18,7 +18,7 @@ export default function BroadcasterDashboard() {
     viewerCount: 0
   })
 
-  const [currentSession, setCurrentSession] = useState<string | null>(null)
+  const [currentSession, setCurrentSession] = useState<StreamSession | undefined>(undefined)
   const [webrtcSupported, setWebrtcSupported] = useState(true)
   const streamRef = useRef<MediaStream | null>(null)
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
@@ -32,7 +32,13 @@ export default function BroadcasterDashboard() {
 
     // Setup socket event listeners
     socketManager.onStreamStarted((data) => {
-      setCurrentSession(data.sessionId)
+      const session: StreamSession = {
+        id: data.sessionId,
+        streamType: data.streamType,
+        startTime: new Date(),
+        isActive: true
+      }
+      setCurrentSession(session)
       setStreamState(prev => ({
         ...prev,
         isLive: true,
@@ -143,7 +149,7 @@ export default function BroadcasterDashboard() {
       screenEnabled: false,
       viewerCount: 0
     })
-    setCurrentSession(null)
+    setCurrentSession(undefined)
   }
 
   const handleToggleWebcam = async () => {
