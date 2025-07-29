@@ -246,14 +246,14 @@ class SocketManager {
   private setupSocketEventHandlers(): void {
     if (!this.socket || this.isDestroyed) return
 
-    this.socket.on('reconnect', (attemptNumber) => {
+    this.socket.on('reconnect', (attemptNumber: number) => {
       if (this.isDestroyed) return
       log('info', '✅ Socket reconnected after', attemptNumber, 'attempts')
       this.reconnectAttempts = 0
       this.fallbackMode = false
     })
 
-    this.socket.on('reconnect_error', (error) => {
+    this.socket.on('reconnect_error', (error: Error) => {
       if (this.isDestroyed) return
       log('error', '❌ Socket reconnection error:', error.message)
     })
@@ -272,20 +272,20 @@ class SocketManager {
     })
 
     // Handle server-side events
-    this.socket.on('server-status', (status) => {
+    this.socket.on('server-status', (status: any) => {
       if (!this.isDestroyed) {
         log('info', '📊 Server status:', status)
       }
     })
 
-    this.socket.on('server-heartbeat', (data) => {
+    this.socket.on('server-heartbeat', (data: any) => {
       if (!this.isDestroyed) {
         log('info', '💓 Server heartbeat:', data.timestamp)
       }
     })
 
     // Error handling
-    this.socket.on('error', (error) => {
+    this.socket.on('error', (error: Error) => {
       if (!this.isDestroyed) {
         log('error', '❌ Socket error:', error)
       }
