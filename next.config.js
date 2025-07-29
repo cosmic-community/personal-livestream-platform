@@ -1,8 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['@cosmicjs/sdk']
-  },
+  serverExternalPackages: ['@cosmicjs/sdk'],
   images: {
     domains: ['cdn.cosmicjs.com', 'imgix.cosmicjs.com'],
     remotePatterns: [
