@@ -1,0 +1,173 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --primary: 239 68 68;
+    --primary-foreground: 255 255 255;
+    --secondary: 100 116 139;
+    --secondary-foreground: 255 255 255;
+    --success: 16 185 129;
+    --success-foreground: 255 255 255;
+    --border: 226 232 240;
+    --background: 255 255 255;
+    --foreground: 30 41 59;
+    --muted: 248 250 252;
+    --muted-foreground: 100 116 139;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary-hover shadow-sm;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary text-secondary-foreground hover:bg-secondary-hover shadow-sm;
+  }
+
+  .btn-success {
+    @apply bg-success text-success-foreground hover:bg-success-hover shadow-sm;
+  }
+
+  .btn-outline {
+    @apply border border-border bg-background hover:bg-muted shadow-sm;
+  }
+
+  .btn-sm {
+    @apply h-9 px-3;
+  }
+
+  .btn-md {
+    @apply h-10 px-4 py-2;
+  }
+
+  .btn-lg {
+    @apply h-12 px-8;
+  }
+
+  .card {
+    @apply rounded-xl border border-border bg-background p-6 shadow-sm;
+  }
+
+  .live-indicator {
+    @apply relative inline-flex h-3 w-3 rounded-full bg-primary;
+  }
+
+  .live-indicator::before {
+    @apply absolute inset-0 rounded-full bg-primary animate-ping;
+    content: '';
+  }
+
+  .stream-video {
+    @apply w-full h-auto rounded-lg shadow-lg bg-gray-900;
+  }
+
+  .loading-spinner {
+    @apply animate-spin rounded-full h-8 w-8 border-b-2 border-primary;
+  }
+
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .status-live {
+    @apply bg-red-100 text-red-800 border border-red-200;
+  }
+
+  .status-offline {
+    @apply bg-gray-100 text-gray-800 border border-gray-200;
+  }
+
+  .status-connecting {
+    @apply bg-yellow-100 text-yellow-800 border border-yellow-200;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Custom animations */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s infinite;
+}
+
+/* Stream quality indicators */
+.quality-excellent {
+  @apply bg-green-500;
+}
+
+.quality-good {
+  @apply bg-yellow-500;
+}
+
+.quality-poor {
+  @apply bg-red-500;
+}
+
+/* Responsive video container */
+.video-container {
+  position: relative;
+  width: 100%;
+  height: 0;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+}
+
+.video-container video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Mobile optimizations */
+@media (max-width: 640px) {
+  .btn {
+    @apply text-sm px-3 py-2;
+  }
+  
+  .card {
+    @apply p-4;
+  }
+}
