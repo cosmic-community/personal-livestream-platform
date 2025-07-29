@@ -7,9 +7,14 @@ export default function StreamControls({
   onToggleWebcam,
   onToggleScreen
 }: StreamControlsProps) {
-  const handleStreamTypeChange = (type: StreamType) => {
+  const handleStreamTypeChange = async (type: StreamType) => {
     if (!streamState.isLive && !streamState.isConnecting) {
-      onStartStream(type)
+      try {
+        await onStartStream(type)
+      } catch (error) {
+        console.error('Failed to start stream:', error)
+        // Error handling is done in the parent component
+      }
     }
   }
 
@@ -23,6 +28,7 @@ export default function StreamControls({
               <button
                 onClick={() => handleStreamTypeChange('webcam')}
                 className="btn btn-primary btn-lg flex items-center gap-2"
+                disabled={streamState.isConnecting}
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
@@ -33,6 +39,7 @@ export default function StreamControls({
               <button
                 onClick={() => handleStreamTypeChange('screen')}
                 className="btn btn-secondary btn-lg flex items-center gap-2"
+                disabled={streamState.isConnecting}
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm1 8V5h12v7H4z" clipRule="evenodd" />
@@ -45,6 +52,7 @@ export default function StreamControls({
               <button
                 onClick={() => handleStreamTypeChange('both')}
                 className="btn btn-outline btn-lg flex items-center gap-2 mx-auto"
+                disabled={streamState.isConnecting}
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
@@ -58,6 +66,9 @@ export default function StreamControls({
           <div className="text-center">
             <div className="loading-spinner mx-auto mb-4"></div>
             <p className="text-gray-600">Starting stream...</p>
+            <p className="text-sm text-gray-500 mt-2">
+              Please allow camera/microphone permissions if prompted
+            </p>
           </div>
         ) : (
           <button

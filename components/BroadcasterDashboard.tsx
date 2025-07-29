@@ -291,26 +291,6 @@ export default function BroadcasterDashboard() {
       return
     }
 
-    // Check socket connection first
-    if (!socketManager.isConnected()) {
-      setStreamState((prev: StreamState) => ({
-        ...prev,
-        error: 'Not connected to streaming server. Attempting to reconnect...',
-        isConnecting: false
-      }))
-      
-      // Force reconnection
-      socketManager.forceReconnect()
-      
-      // Wait a bit and try again
-      setTimeout(() => {
-        if (socketManager.isConnected()) {
-          handleStartStream(streamType)
-        }
-      }, 3000)
-      return
-    }
-
     console.log('🚀 Starting stream with type:', streamType)
     setStreamState((prev: StreamState) => ({
       ...prev,
@@ -360,6 +340,11 @@ export default function BroadcasterDashboard() {
       }
 
       streamRef.current = finalStream
+
+      // Check connection and start broadcast
+      if (!socketManager.isConnected() && !socketManager.isFallbackMode()) {
+        throw new Error('Not connected to streaming server. Please wait for connection or refresh the page.')
+      }
 
       // Start socket broadcast and wait for confirmation
       console.log('📡 Starting socket broadcast...')
