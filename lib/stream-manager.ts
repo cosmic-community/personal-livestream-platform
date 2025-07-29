@@ -79,7 +79,12 @@ class StreamManager {
 
     socketManager.onStreamError((error) => {
       log('error', '❌ Stream error', error)
-      this.config.onError?.(error)
+      // Convert StreamErrorEvent to StreamError by adding timestamp
+      const streamError: StreamError = {
+        ...error,
+        timestamp: error.timestamp || new Date().toISOString()
+      }
+      this.config.onError?.(streamError)
     })
 
     // Connection health monitoring with proper type handling

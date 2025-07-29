@@ -16,6 +16,7 @@ interface StreamEndedEvent {
 interface StreamErrorEvent {
   code: string
   message: string
+  timestamp: string
   details?: any
 }
 

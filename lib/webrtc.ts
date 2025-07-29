@@ -504,6 +504,7 @@ function createStreamError(code: string, message: string, originalError?: any): 
   const error: StreamError = {
     code,
     message,
+    timestamp: new Date().toISOString(),
     details: originalError,
     browserInfo: {
       userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
