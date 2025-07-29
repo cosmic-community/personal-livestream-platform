@@ -247,9 +247,13 @@ class SocketManager {
         const onceWrapper = (...args: any[]) => {
           callback(...args)
           // Remove after first call
-          this.off(event, onceWrapper)
+          if (this.socket && typeof this.socket.off === 'function') {
+            this.socket.off(event, onceWrapper)
+          }
         }
-        this.on(event, onceWrapper)
+        if (this.socket && typeof this.socket.on === 'function') {
+          this.socket.on(event, onceWrapper)
+        }
       },
       
       off: (event: string, callback?: Function) => {
@@ -300,7 +304,9 @@ class SocketManager {
     this.fallbackInterval = setInterval(() => {
       if (this.fallbackMode && this.socket?.connected) {
         const viewerCount = Math.floor(Math.random() * 5) + 1
-        this.triggerEvent?.('viewer-count', viewerCount)
+        if (this.triggerEvent) {
+          this.triggerEvent('viewer-count', viewerCount)
+        }
       }
     }, 10000) // Update every 10 seconds
   }
@@ -358,7 +364,11 @@ class SocketManager {
 
   off(event: string, callback?: Function): void {
     if (this.socket) {
-      this.socket.off(event, callback)
+      if (callback) {
+        this.socket.off(event, callback)
+      } else {
+        this.socket.off(event)
+      }
     }
   }
 
@@ -383,8 +393,10 @@ class SocketManager {
 
       // Set up one-time listeners for the response
       const timeout: NodeJS.Timeout | undefined = setTimeout(() => {
-        this.socket?.off('stream-started')
-        this.socket?.off('stream-error')
+        if (this.socket) {
+          this.socket.off('stream-started')
+          this.socket.off('stream-error')
+        }
         if (this.fallbackMode) {
           // In fallback mode, simulate success
           console.log('✅ Fallback broadcast started successfully')
@@ -394,34 +406,36 @@ class SocketManager {
         }
       }, 10000) // 10 second timeout
 
-      this.socket.once('stream-started', (data: StreamStartedEvent) => {
-        if (timeout) {
-          clearTimeout(timeout)
-        }
-        console.log('✅ Stream started successfully:', data)
-        resolve()
-      })
+      if (this.socket) {
+        this.socket.once('stream-started', (data: StreamStartedEvent) => {
+          if (timeout) {
+            clearTimeout(timeout)
+          }
+          console.log('✅ Stream started successfully:', data)
+          resolve()
+        })
 
-      this.socket.once('stream-error', (error: StreamErrorEvent) => {
-        if (timeout) {
-          clearTimeout(timeout)
-        }
-        console.error('❌ Stream start failed:', error)
-        reject(new Error(error.message || 'Failed to start stream'))
-      })
+        this.socket.once('stream-error', (error: StreamErrorEvent) => {
+          if (timeout) {
+            clearTimeout(timeout)
+          }
+          console.error('❌ Stream start failed:', error)
+          reject(new Error(error.message || 'Failed to start stream'))
+        })
 
-      // Emit the start broadcast event
-      this.socket.emit('start-broadcast', {
-        streamType,
-        timestamp: new Date().toISOString(),
-        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
-        resolution: typeof window !== 'undefined' ? {
-          width: window.screen?.width || 1920,
-          height: window.screen?.height || 1080
-        } : { width: 1920, height: 1080 },
-        clientId: this.socket.id,
-        fallbackMode: this.fallbackMode
-      })
+        // Emit the start broadcast event
+        this.socket.emit('start-broadcast', {
+          streamType,
+          timestamp: new Date().toISOString(),
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
+          resolution: typeof window !== 'undefined' ? {
+            width: window.screen?.width || 1920,
+            height: window.screen?.height || 1080
+          } : { width: 1920, height: 1080 },
+          clientId: this.socket.id,
+          fallbackMode: this.fallbackMode
+        })
+      }
     })
   }
 
@@ -438,49 +452,69 @@ class SocketManager {
 
   // Event listeners
   onStreamStarted(callback: (data: StreamStartedEvent) => void): void {
-    this.socket?.on('stream-started', callback)
+    if (this.socket) {
+      this.socket.on('stream-started', callback)
+    }
   }
 
   onStreamEnded(callback: (data: StreamEndedEvent) => void): void {
-    this.socket?.on('stream-ended', callback)
+    if (this.socket) {
+      this.socket.on('stream-ended', callback)
+    }
   }
 
   onStreamError(callback: (error: StreamErrorEvent) => void): void {
-    this.socket?.on('stream-error', callback)
+    if (this.socket) {
+      this.socket.on('stream-error', callback)
+    }
   }
 
   onViewerCount(callback: (count: number) => void): void {
-    this.socket?.on('viewer-count', callback)
+    if (this.socket) {
+      this.socket.on('viewer-count', callback)
+    }
   }
 
   onStreamOffer(callback: (offer: RTCSessionDescriptionInit) => void): void {
-    this.socket?.on('stream-offer', callback)
+    if (this.socket) {
+      this.socket.on('stream-offer', callback)
+    }
   }
 
   onStreamAnswer(callback: (answer: RTCSessionDescriptionInit) => void): void {
-    this.socket?.on('stream-answer', callback)
+    if (this.socket) {
+      this.socket.on('stream-answer', callback)
+    }
   }
 
   onIceCandidate(callback: (candidate: RTCIceCandidateInit) => void): void {
-    this.socket?.on('ice-candidate', callback)
+    if (this.socket) {
+      this.socket.on('ice-candidate', callback)
+    }
   }
 
   // Send WebRTC signaling data
   sendOffer(offer: RTCSessionDescriptionInit, targetId?: string): void {
     if (this.socket?.connected || this.fallbackMode) {
-      this.socket?.emit('stream-offer', { offer, targetId })
+      if (this.socket) {
+        this.socket.emit('stream-offer', { offer, targetId })
+      }
     }
   }
 
   sendAnswer(answer: RTCSessionDescriptionInit, targetId: string): void {
     if (this.socket?.connected || this.fallbackMode) {
-      this.socket?.emit('stream-answer', { answer, targetId })
+      if (this.socket) {
+        this.socket.emit('stream-answer', { answer, targetId })
+      }
     }
   }
 
   sendIceCandidate(candidate: RTCIceCandidateInit, targetId?: string): void {
     if (this.socket?.connected || this.fallbackMode) {
-      this.socket?.emit('ice-candidate', { candidate, targetId })
+      if (this.socket) {
+        this.socket.emit('ice-candidate', { candidate, targetId })
+      }
     }
   }
 
