@@ -1,43 +1,37 @@
 const express = require('express')
 const { createServer } = require('http')
-const { Server } = require('socket.io')
-const cors = require('cors')
+const WebSocket = require('ws')
 const { v4: uuidv4 } = require('uuid')
 
 const app = express()
 const server = createServer(app)
 
-// Configure CORS for Socket.IO
-const io = new Server(server, {
-  cors: {
-    origin: [
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "https://localhost:3000",
-      "https://127.0.0.1:3000",
-      // Add your production domain here when needed
-      process.env.FRONTEND_URL
-    ].filter(Boolean),
-    methods: ["GET", "POST"],
-    credentials: true
-  },
-  transports: ['websocket', 'polling'],
-  pingTimeout: 60000,
-  pingInterval: 25000,
-  upgradeTimeout: 30000,
-  maxHttpBufferSize: 1e6, // 1MB
-  allowEIO3: true
+// Create WebSocket server
+const wss = new WebSocket.Server({ 
+  server,
+  path: '/ws',
+  perMessageDeflate: false
 })
 
 // Middleware
-app.use(cors())
 app.use(express.json())
+
+// Enable CORS for all routes
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*')
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization')
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200)
+  } else {
+    next()
+  }
+})
 
 // Store active streams and connections
 const activeStreams = new Map() // sessionId -> stream data
-const connections = new Map() // socketId -> connection data
-const viewers = new Map() // sessionId -> Set of socketIds
-const broadcasters = new Map() // sessionId -> broadcasterSocketId
+const connections = new Map() // ws -> connection data
+const viewers = new Map() // sessionId -> Set of ws
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -66,414 +60,369 @@ app.get('/api/streams', (req, res) => {
   })
 })
 
-// Socket.IO connection handling
-io.on('connection', (socket) => {
-  console.log(`🔌 New connection: ${socket.id} from ${socket.handshake.address}`)
+// WebSocket connection handling
+wss.on('connection', (ws, req) => {
+  const connectionId = uuidv4()
+  console.log(`🔌 New WebSocket connection: ${connectionId}`)
   
   // Store connection info
-  connections.set(socket.id, {
-    id: socket.id,
+  connections.set(ws, {
+    id: connectionId,
     connectedAt: new Date().toISOString(),
     lastHeartbeat: new Date().toISOString(),
-    userAgent: socket.handshake.headers['user-agent'] || 'Unknown',
-    address: socket.handshake.address
+    userAgent: req.headers['user-agent'] || 'Unknown',
+    address: req.socket.remoteAddress
   })
 
-  // Send server status
-  socket.emit('server-status', {
-    status: 'connected',
-    serverTime: new Date().toISOString(),
-    activeStreams: activeStreams.size,
-    totalConnections: connections.size
+  // Send initial connection confirmation
+  sendMessage(ws, {
+    type: 'connected',
+    connectionId,
+    serverTime: new Date().toISOString()
   })
 
-  // Handle heartbeat/ping-pong
-  socket.on('heartbeat', (data) => {
-    console.log(`💓 Heartbeat from ${socket.id}`)
-    const connection = connections.get(socket.id)
-    if (connection) {
-      connection.lastHeartbeat = new Date().toISOString()
-      connections.set(socket.id, connection)
+  // Handle incoming messages
+  ws.on('message', (data) => {
+    try {
+      const message = JSON.parse(data.toString())
+      handleMessage(ws, message)
+    } catch (error) {
+      console.error('❌ Error parsing message:', error)
+      sendMessage(ws, {
+        type: 'error',
+        message: 'Invalid message format'
+      })
+    }
+  })
+
+  // Handle connection close
+  ws.on('close', (code, reason) => {
+    console.log(`🔌 Connection closed: ${connectionId}, code: ${code}`)
+    
+    // Clean up connection
+    connections.delete(ws)
+    
+    // Check if this was a broadcaster
+    let broadcastSessionId = null
+    for (const [sessionId, stream] of activeStreams.entries()) {
+      if (stream.broadcasterWs === ws) {
+        broadcastSessionId = sessionId
+        break
+      }
     }
     
-    socket.emit('heartbeat-ack', {
-      timestamp: new Date().toISOString(),
-      serverId: 'livestream-server-1'
-    })
-  })
-
-  // Handle ping/pong for compatibility
-  socket.on('pong', (data) => {
-    console.log(`🏓 Pong received from ${socket.id}:`, data?.timestamp)
-  })
-
-  // Broadcast stream start
-  socket.on('start-broadcast', async (data) => {
-    try {
-      console.log(`🚀 Start broadcast request from ${socket.id}:`, data)
-      
-      const sessionId = uuidv4()
-      const streamData = {
-        sessionId,
-        broadcasterId: socket.id,
-        streamType: data.streamType || 'webcam',
-        startTime: new Date().toISOString(),
-        isLive: true,
-        metadata: {
-          userAgent: data.userAgent,
-          resolution: data.resolution,
-          clientId: data.clientId,
-          fallbackMode: data.fallbackMode || false
-        }
-      }
-
-      // Store stream data
-      activeStreams.set(sessionId, streamData)
-      broadcasters.set(sessionId, socket.id)
-      viewers.set(sessionId, new Set())
-
-      console.log(`✅ Stream started: ${sessionId} by ${socket.id}`)
-
-      // Confirm to broadcaster
-      socket.emit('stream-started', {
-        sessionId,
-        streamType: streamData.streamType,
-        timestamp: streamData.startTime
-      })
-
-      // Notify all other clients about new stream
-      socket.broadcast.emit('stream-available', {
-        sessionId,
-        streamType: streamData.streamType,
-        timestamp: streamData.startTime
-      })
-
-      // Log stream start
-      console.log(`📊 Active streams: ${activeStreams.size}, Total connections: ${connections.size}`)
-
-    } catch (error) {
-      console.error(`❌ Error starting broadcast for ${socket.id}:`, error)
-      socket.emit('stream-error', {
-        code: 'BROADCAST_START_FAILED',
-        message: 'Failed to start broadcast: ' + error.message
-      })
+    if (broadcastSessionId) {
+      console.log(`📺 Broadcaster disconnected, stopping stream: ${broadcastSessionId}`)
+      stopStream(broadcastSessionId)
     }
+    
+    // Remove from viewer lists
+    removeViewerFromAllStreams(ws)
   })
 
-  // Stop broadcast
-  socket.on('stop-broadcast', (data) => {
-    try {
-      console.log(`🛑 Stop broadcast request from ${socket.id}:`, data)
-      
-      // Find and stop the stream
-      let stoppedSessionId = null
-      for (const [sessionId, stream] of activeStreams.entries()) {
-        if (stream.broadcasterId === socket.id) {
-          stoppedSessionId = sessionId
-          break
-        }
-      }
-
-      if (stoppedSessionId) {
-        stopStream(stoppedSessionId, socket.id)
-      } else {
-        console.warn(`⚠️ No active stream found for broadcaster ${socket.id}`)
-      }
-
-    } catch (error) {
-      console.error(`❌ Error stopping broadcast for ${socket.id}:`, error)
-      socket.emit('stream-error', {
-        code: 'BROADCAST_STOP_FAILED',
-        message: 'Failed to stop broadcast: ' + error.message
-      })
-    }
-  })
-
-  // Join stream as viewer
-  socket.on('join-stream', (data) => {
-    try {
-      console.log(`👀 Viewer join request from ${socket.id}:`, data)
-      
-      const { sessionId } = data
-      
-      if (!sessionId) {
-        // Auto-join any active stream
-        const activeSessionIds = Array.from(activeStreams.keys()).filter(id => 
-          activeStreams.get(id)?.isLive
-        )
-        
-        if (activeSessionIds.length > 0) {
-          const targetSessionId = activeSessionIds[0] // Join first active stream
-          joinViewerToStream(socket, targetSessionId)
-        } else {
-          socket.emit('stream-error', {
-            code: 'NO_ACTIVE_STREAMS',
-            message: 'No active streams available'
-          })
-        }
-      } else {
-        // Join specific stream
-        joinViewerToStream(socket, sessionId)
-      }
-
-    } catch (error) {
-      console.error(`❌ Error joining stream for ${socket.id}:`, error)
-      socket.emit('stream-error', {
-        code: 'JOIN_STREAM_FAILED',
-        message: 'Failed to join stream: ' + error.message
-      })
-    }
-  })
-
-  // Leave stream
-  socket.on('leave-stream', (data) => {
-    try {
-      console.log(`👋 Viewer leave request from ${socket.id}:`, data)
-      removeViewerFromAllStreams(socket.id)
-    } catch (error) {
-      console.error(`❌ Error leaving stream for ${socket.id}:`, error)
-    }
-  })
-
-  // WebRTC signaling
-  socket.on('stream-offer', (data) => {
-    try {
-      console.log(`📤 Stream offer from ${socket.id}`)
-      const { offer, targetId, sessionId } = data
-      
-      if (targetId) {
-        // Send to specific target
-        io.to(targetId).emit('stream-offer', offer)
-      } else if (sessionId) {
-        // Broadcast to all viewers of this stream
-        const streamViewers = viewers.get(sessionId)
-        if (streamViewers) {
-          streamViewers.forEach(viewerId => {
-            if (viewerId !== socket.id) {
-              io.to(viewerId).emit('stream-offer', offer)
-            }
-          })
-        }
-      } else {
-        // Broadcast to all connected clients except sender
-        socket.broadcast.emit('stream-offer', offer)
-      }
-    } catch (error) {
-      console.error(`❌ Error handling stream offer from ${socket.id}:`, error)
-    }
-  })
-
-  socket.on('stream-answer', (data) => {
-    try {
-      console.log(`📥 Stream answer from ${socket.id}`)
-      const { answer, targetId } = data
-      
-      if (targetId) {
-        io.to(targetId).emit('stream-answer', answer)
-      } else {
-        socket.broadcast.emit('stream-answer', answer)
-      }
-    } catch (error) {
-      console.error(`❌ Error handling stream answer from ${socket.id}:`, error)
-    }
-  })
-
-  socket.on('ice-candidate', (data) => {
-    try {
-      const { candidate, targetId, sessionId } = data
-      
-      if (targetId) {
-        // Send to specific target
-        io.to(targetId).emit('ice-candidate', candidate)
-      } else if (sessionId) {
-        // Broadcast to session participants
-        const streamViewers = viewers.get(sessionId)
-        const broadcasterSocketId = broadcasters.get(sessionId)
-        
-        // Send to broadcaster if sender is viewer
-        if (streamViewers?.has(socket.id) && broadcasterSocketId) {
-          io.to(broadcasterSocketId).emit('ice-candidate', candidate)
-        }
-        
-        // Send to viewers if sender is broadcaster
-        if (socket.id === broadcasterSocketId && streamViewers) {
-          streamViewers.forEach(viewerId => {
-            io.to(viewerId).emit('ice-candidate', candidate)
-          })
-        }
-      } else {
-        // Broadcast to all
-        socket.broadcast.emit('ice-candidate', candidate)
-      }
-    } catch (error) {
-      console.error(`❌ Error handling ICE candidate from ${socket.id}:`, error)
-    }
-  })
-
-  // Handle disconnection
-  socket.on('disconnect', (reason) => {
-    try {
-      console.log(`🔌 Client disconnected: ${socket.id}, reason: ${reason}`)
-      
-      // Remove from connections
-      connections.delete(socket.id)
-      
-      // Check if this was a broadcaster
-      let broadcastSessionId = null
-      for (const [sessionId, broadcasterId] of broadcasters.entries()) {
-        if (broadcasterId === socket.id) {
-          broadcastSessionId = sessionId
-          break
-        }
-      }
-      
-      if (broadcastSessionId) {
-        console.log(`📺 Broadcaster disconnected, stopping stream: ${broadcastSessionId}`)
-        stopStream(broadcastSessionId, socket.id)
-      }
-      
-      // Remove from viewer lists
-      removeViewerFromAllStreams(socket.id)
-      
-      console.log(`📊 Remaining connections: ${connections.size}`)
-
-    } catch (error) {
-      console.error(`❌ Error handling disconnection for ${socket.id}:`, error)
-    }
-  })
-
-  // Error handling
-  socket.on('error', (error) => {
-    console.error(`❌ Socket error from ${socket.id}:`, error)
+  // Handle errors
+  ws.on('error', (error) => {
+    console.error(`❌ WebSocket error for ${connectionId}:`, error)
   })
 })
 
-// Helper function to join viewer to stream
-function joinViewerToStream(socket, sessionId) {
-  const stream = activeStreams.get(sessionId)
-  
-  if (!stream || !stream.isLive) {
-    socket.emit('stream-error', {
-      code: 'STREAM_NOT_FOUND',
-      message: 'Stream not found or not active'
-    })
+// Handle WebSocket messages
+function handleMessage(ws, message) {
+  const connection = connections.get(ws)
+  if (!connection) {
+    console.warn('⚠️ Message from unknown connection')
     return
   }
 
-  // Add viewer to stream
-  if (!viewers.has(sessionId)) {
+  console.log(`📨 Message from ${connection.id}:`, message.type)
+
+  switch (message.type) {
+    case 'heartbeat':
+      connection.lastHeartbeat = new Date().toISOString()
+      sendMessage(ws, {
+        type: 'heartbeat-ack',
+        timestamp: new Date().toISOString()
+      })
+      break
+
+    case 'start-broadcast':
+      handleStartBroadcast(ws, message)
+      break
+
+    case 'stop-broadcast':
+      handleStopBroadcast(ws, message)
+      break
+
+    case 'join-stream':
+      handleJoinStream(ws, message)
+      break
+
+    case 'leave-stream':
+      handleLeaveStream(ws, message)
+      break
+
+    default:
+      console.warn(`⚠️ Unknown message type: ${message.type}`)
+      sendMessage(ws, {
+        type: 'error',
+        message: `Unknown message type: ${message.type}`
+      })
+  }
+}
+
+// Handle start broadcast
+function handleStartBroadcast(ws, message) {
+  try {
+    const sessionId = uuidv4()
+    const streamData = {
+      sessionId,
+      broadcasterWs: ws,
+      streamType: message.streamType || 'webcam',
+      startTime: new Date().toISOString(),
+      isLive: true,
+      metadata: {
+        timestamp: message.timestamp,
+        userAgent: connections.get(ws)?.userAgent
+      }
+    }
+
+    // Store stream data
+    activeStreams.set(sessionId, streamData)
     viewers.set(sessionId, new Set())
-  }
-  viewers.get(sessionId).add(socket.id)
 
-  const viewerCount = viewers.get(sessionId).size
+    console.log(`✅ Stream started: ${sessionId}`)
 
-  console.log(`✅ Viewer ${socket.id} joined stream ${sessionId} (${viewerCount} viewers)`)
+    // Confirm to broadcaster
+    sendMessage(ws, {
+      type: 'stream-started',
+      sessionId,
+      streamType: streamData.streamType,
+      timestamp: streamData.startTime
+    })
 
-  // Notify viewer of successful join
-  socket.emit('stream-joined', {
-    sessionId,
-    streamType: stream.streamType,
-    viewerCount
-  })
+    // Notify all other connections about new stream
+    broadcast({
+      type: 'stream-available',
+      sessionId,
+      streamType: streamData.streamType,
+      timestamp: streamData.startTime
+    }, ws)
 
-  // Update viewer count for all participants
-  const allParticipants = [...viewers.get(sessionId)]
-  const broadcasterSocketId = broadcasters.get(sessionId)
-  if (broadcasterSocketId) {
-    allParticipants.push(broadcasterSocketId)
-  }
+    console.log(`📊 Active streams: ${activeStreams.size}`)
 
-  allParticipants.forEach(participantId => {
-    io.to(participantId).emit('viewer-count', viewerCount)
-  })
-
-  // Send stream offer from broadcaster to new viewer (if broadcaster exists)
-  if (broadcasterSocketId) {
-    io.to(broadcasterSocketId).emit('new-viewer', {
-      viewerId: socket.id,
-      sessionId
+  } catch (error) {
+    console.error('❌ Error starting broadcast:', error)
+    sendMessage(ws, {
+      type: 'error',
+      message: 'Failed to start broadcast: ' + error.message
     })
   }
 }
 
-// Helper function to remove viewer from all streams
-function removeViewerFromAllStreams(socketId) {
-  for (const [sessionId, viewerSet] of viewers.entries()) {
-    if (viewerSet.has(socketId)) {
-      viewerSet.delete(socketId)
-      
-      const viewerCount = viewerSet.size
-      console.log(`👋 Viewer ${socketId} left stream ${sessionId} (${viewerCount} viewers remaining)`)
-
-      // Update viewer count for remaining participants
-      const remainingParticipants = [...viewerSet]
-      const broadcasterSocketId = broadcasters.get(sessionId)
-      if (broadcasterSocketId) {
-        remainingParticipants.push(broadcasterSocketId)
-      }
-
-      remainingParticipants.forEach(participantId => {
-        io.to(participantId).emit('viewer-count', viewerCount)
-      })
-
-      // Clean up empty viewer sets
-      if (viewerSet.size === 0) {
-        viewers.delete(sessionId)
+// Handle stop broadcast
+function handleStopBroadcast(ws, message) {
+  try {
+    // Find the stream for this broadcaster
+    let sessionId = null
+    for (const [id, stream] of activeStreams.entries()) {
+      if (stream.broadcasterWs === ws) {
+        sessionId = id
+        break
       }
     }
+
+    if (sessionId) {
+      stopStream(sessionId)
+      console.log(`✅ Stream stopped: ${sessionId}`)
+    } else {
+      console.warn('⚠️ No active stream found for this broadcaster')
+    }
+
+  } catch (error) {
+    console.error('❌ Error stopping broadcast:', error)
+    sendMessage(ws, {
+      type: 'error',
+      message: 'Failed to stop broadcast: ' + error.message
+    })
   }
 }
 
-// Helper function to stop a stream
-function stopStream(sessionId, broadcasterId) {
+// Handle join stream
+function handleJoinStream(ws, message) {
   try {
-    const stream = activeStreams.get(sessionId)
-    if (!stream) {
-      console.warn(`⚠️ Attempt to stop non-existent stream: ${sessionId}`)
+    const { sessionId } = message
+    
+    // If no sessionId provided, join any active stream
+    let targetSessionId = sessionId
+    if (!targetSessionId) {
+      const activeSessionIds = Array.from(activeStreams.keys()).filter(id => 
+        activeStreams.get(id)?.isLive
+      )
+      if (activeSessionIds.length > 0) {
+        targetSessionId = activeSessionIds[0]
+      }
+    }
+
+    if (!targetSessionId) {
+      sendMessage(ws, {
+        type: 'error',
+        message: 'No active streams available'
+      })
       return
     }
 
-    console.log(`🛑 Stopping stream: ${sessionId}`)
-
-    // Mark stream as ended
-    stream.isLive = false
-    stream.endTime = new Date().toISOString()
-
-    // Notify all viewers that stream ended
-    const streamViewers = viewers.get(sessionId)
-    if (streamViewers) {
-      streamViewers.forEach(viewerId => {
-        io.to(viewerId).emit('stream-ended', {
-          sessionId,
-          timestamp: stream.endTime,
-          reason: 'Broadcaster stopped the stream'
-        })
+    const stream = activeStreams.get(targetSessionId)
+    if (!stream || !stream.isLive) {
+      sendMessage(ws, {
+        type: 'error',
+        message: 'Stream not found or not active'
       })
+      return
     }
 
-    // Notify broadcaster
-    io.to(broadcasterId).emit('stream-ended', {
-      sessionId,
-      timestamp: stream.endTime
+    // Add viewer to stream
+    if (!viewers.has(targetSessionId)) {
+      viewers.set(targetSessionId, new Set())
+    }
+    viewers.get(targetSessionId).add(ws)
+
+    const viewerCount = viewers.get(targetSessionId).size
+
+    console.log(`✅ Viewer joined stream ${targetSessionId} (${viewerCount} viewers)`)
+
+    // Notify viewer
+    sendMessage(ws, {
+      type: 'stream-joined',
+      sessionId: targetSessionId,
+      streamType: stream.streamType,
+      viewerCount
     })
 
-    // Broadcast to all clients
-    io.emit('stream-unavailable', {
-      sessionId,
-      timestamp: stream.endTime
-    })
-
-    // Clean up
-    activeStreams.delete(sessionId)
-    broadcasters.delete(sessionId)
-    viewers.delete(sessionId)
-
-    console.log(`✅ Stream ${sessionId} stopped successfully`)
+    // Update viewer count for all participants
+    updateViewerCount(targetSessionId)
 
   } catch (error) {
-    console.error(`❌ Error stopping stream ${sessionId}:`, error)
+    console.error('❌ Error joining stream:', error)
+    sendMessage(ws, {
+      type: 'error',
+      message: 'Failed to join stream: ' + error.message
+    })
   }
+}
+
+// Handle leave stream
+function handleLeaveStream(ws, message) {
+  try {
+    removeViewerFromAllStreams(ws)
+  } catch (error) {
+    console.error('❌ Error leaving stream:', error)
+  }
+}
+
+// Helper function to send message to a WebSocket
+function sendMessage(ws, message) {
+  if (ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify(message))
+      return true
+    } catch (error) {
+      console.error('❌ Error sending message:', error)
+      return false
+    }
+  }
+  return false
+}
+
+// Helper function to broadcast message to all connections except sender
+function broadcast(message, excludeWs = null) {
+  let sentCount = 0
+  for (const ws of connections.keys()) {
+    if (ws !== excludeWs && sendMessage(ws, message)) {
+      sentCount++
+    }
+  }
+  console.log(`📡 Broadcasted message to ${sentCount} connections`)
+}
+
+// Helper function to stop a stream
+function stopStream(sessionId) {
+  const stream = activeStreams.get(sessionId)
+  if (!stream) return
+
+  // Mark stream as ended
+  stream.isLive = false
+  stream.endTime = new Date().toISOString()
+
+  // Notify all viewers
+  const streamViewers = viewers.get(sessionId)
+  if (streamViewers) {
+    streamViewers.forEach(viewerWs => {
+      sendMessage(viewerWs, {
+        type: 'stream-ended',
+        sessionId,
+        timestamp: stream.endTime
+      })
+    })
+  }
+
+  // Notify broadcaster
+  if (stream.broadcasterWs) {
+    sendMessage(stream.broadcasterWs, {
+      type: 'stream-ended',
+      sessionId,
+      timestamp: stream.endTime
+    })
+  }
+
+  // Broadcast to all
+  broadcast({
+    type: 'stream-unavailable',
+    sessionId,
+    timestamp: stream.endTime
+  })
+
+  // Clean up
+  activeStreams.delete(sessionId)
+  viewers.delete(sessionId)
+
+  console.log(`✅ Stream ${sessionId} stopped`)
+}
+
+// Helper function to remove viewer from all streams
+function removeViewerFromAllStreams(ws) {
+  for (const [sessionId, viewerSet] of viewers.entries()) {
+    if (viewerSet.has(ws)) {
+      viewerSet.delete(ws)
+      console.log(`👋 Viewer left stream ${sessionId}`)
+      updateViewerCount(sessionId)
+    }
+  }
+}
+
+// Helper function to update viewer count for a stream
+function updateViewerCount(sessionId) {
+  const stream = activeStreams.get(sessionId)
+  const streamViewers = viewers.get(sessionId)
+  
+  if (!stream || !streamViewers) return
+
+  const viewerCount = streamViewers.size
+
+  // Notify broadcaster
+  if (stream.broadcasterWs) {
+    sendMessage(stream.broadcasterWs, {
+      type: 'viewer-count',
+      count: viewerCount
+    })
+  }
+
+  // Notify all viewers
+  streamViewers.forEach(viewerWs => {
+    sendMessage(viewerWs, {
+      type: 'viewer-count',
+      count: viewerCount
+    })
+  })
 }
 
 // Periodic cleanup of stale connections
@@ -481,19 +430,21 @@ setInterval(() => {
   const now = new Date()
   const staleThreshold = 5 * 60 * 1000 // 5 minutes
 
-  for (const [socketId, connection] of connections.entries()) {
+  for (const [ws, connection] of connections.entries()) {
     const lastHeartbeat = new Date(connection.lastHeartbeat)
     if (now - lastHeartbeat > staleThreshold) {
-      console.log(`🧹 Cleaning up stale connection: ${socketId}`)
-      connections.delete(socketId)
-      removeViewerFromAllStreams(socketId)
+      console.log(`🧹 Cleaning up stale connection: ${connection.id}`)
+      ws.terminate()
+      connections.delete(ws)
+      removeViewerFromAllStreams(ws)
     }
   }
 }, 60000) // Run every minute
 
-// Periodic server health broadcast
+// Periodic server status broadcast
 setInterval(() => {
-  io.emit('server-heartbeat', {
+  broadcast({
+    type: 'server-status',
     timestamp: new Date().toISOString(),
     activeStreams: activeStreams.size,
     totalConnections: connections.size,
@@ -511,28 +462,30 @@ process.on('unhandledRejection', (reason, promise) => {
 })
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received, shutting down gracefully')
-  server.close(() => {
-    console.log('✅ Server closed')
-    process.exit(0)
-  })
-})
+process.on('SIGTERM', gracefulShutdown)
+process.on('SIGINT', gracefulShutdown)
 
-process.on('SIGINT', () => {
-  console.log('🛑 SIGINT received, shutting down gracefully')
+function gracefulShutdown() {
+  console.log('🛑 Shutting down gracefully...')
+  
+  // Close all WebSocket connections
+  wss.clients.forEach(ws => {
+    ws.close(1000, 'Server shutting down')
+  })
+  
+  // Close server
   server.close(() => {
     console.log('✅ Server closed')
     process.exit(0)
   })
-})
+}
 
 // Start server
 const PORT = process.env.PORT || 3001
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Livestream server running on port ${PORT}`)
-  console.log(`📡 Socket.IO server ready for connections`)
-  console.log(`🌐 Health check available at http://localhost:${PORT}/health`)
-  console.log(`📊 Stream API available at http://localhost:${PORT}/api/streams`)
+  console.log(`📡 WebSocket server ready at ws://localhost:${PORT}/ws`)
+  console.log(`🌐 Health check: http://localhost:${PORT}/health`)
+  console.log(`📊 Stream API: http://localhost:${PORT}/api/streams`)
   console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`)
 })
