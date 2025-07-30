@@ -687,7 +687,7 @@ class SocketManager {
     if (this.isDestroyed) return
     
     if (this.socket?.connected || this.fallbackMode) {
-      // Fixed: Combine parameters into single data object to match Socket.IO emit signature
+      // Fixed: Use single parameter object to match Socket.IO emit signature
       this.socket?.emit('stream-offer', { offer, targetId })
     }
   }
@@ -696,7 +696,7 @@ class SocketManager {
     if (this.isDestroyed) return
     
     if (this.socket?.connected || this.fallbackMode) {
-      // Fixed: Combine parameters into single data object to match Socket.IO emit signature  
+      // Fixed: Use single parameter object to match Socket.IO emit signature  
       this.socket?.emit('stream-answer', { answer, targetId })
     }
   }
