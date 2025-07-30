@@ -682,12 +682,12 @@ class SocketManager {
     this.on('ice-candidate', callback)
   }
 
-  // Send WebRTC signaling data - Fixed to use proper parameter format (max 2 parameters for Socket.IO emit)
+  // Send WebRTC signaling data - FIXED: Use single object parameter for Socket.IO emit (max 2 params)
   sendOffer(offer: RTCSessionDescriptionInit, targetId?: string): void {
     if (this.isDestroyed) return
     
     if (this.socket?.connected || this.fallbackMode) {
-      // Fixed: Use single parameter object to match Socket.IO emit signature (2 params max)
+      // FIXED: Combine parameters into single object to match Socket.IO emit signature
       this.socket?.emit('stream-offer', { offer, targetId })
     }
   }
@@ -696,7 +696,7 @@ class SocketManager {
     if (this.isDestroyed) return
     
     if (this.socket?.connected || this.fallbackMode) {
-      // Fixed: Use single parameter object to match Socket.IO emit signature (2 params max)
+      // FIXED: Combine parameters into single object to match Socket.IO emit signature
       this.socket?.emit('stream-answer', { answer, targetId })
     }
   }
