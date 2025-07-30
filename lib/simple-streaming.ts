@@ -1,5 +1,3 @@
-import { io, Socket } from 'socket.io-client'
-
 export interface StreamConfig {
   serverUrl?: string
   fallbackMode?: boolean
@@ -20,8 +18,8 @@ export interface StreamEvents {
   onViewerCount?: (count: number) => void
 }
 
-class SimpleStreamingClient {
-  private socket: Socket | null = null
+export class SimpleStreamingClient {
+  private ws: WebSocket | null = null
   private config: StreamConfig
   private events: StreamEvents
   private state: StreamState = {
@@ -57,45 +55,39 @@ class SimpleStreamingClient {
 
   async connect(): Promise<boolean> {
     try {
-      if (this.socket?.connected) {
+      if (this.ws?.readyState === WebSocket.OPEN) {
         return true
       }
 
       this.log('Connecting to server', this.config.serverUrl)
 
-      this.socket = io(this.config.serverUrl, {
-        transports: ['websocket', 'polling'],
-        timeout: 10000,
-        reconnection: true,
-        reconnectionAttempts: 3,
-        reconnectionDelay: 1000
-      })
+      this.ws = new WebSocket(this.config.serverUrl + '/ws')
 
       return new Promise((resolve) => {
-        if (!this.socket) {
+        if (!this.ws) {
           resolve(false)
           return
         }
 
-        this.socket.once('connect', () => {
+        this.ws.onopen = () => {
           this.log('Connected successfully')
           this.updateState({ isConnected: true, error: undefined })
           this.setupEventListeners()
           resolve(true)
-        })
+        }
 
-        this.socket.once('connect_error', (error) => {
-          this.log('Connection failed', error.message)
-          this.emitError('Connection failed: ' + error.message)
+        this.ws.onerror = (error) => {
+          this.log('Connection failed', error)
+          this.emitError('Connection failed')
           resolve(false)
-        })
+        }
 
         setTimeout(() => {
           if (!this.state.isConnected) {
             this.emitError('Connection timeout')
             resolve(false)
           }
-        }, 15000)
+        }, 10000)
       })
     } catch (error) {
       this.emitError('Connection error: ' + (error instanceof Error ? error.message : 'Unknown error'))
@@ -104,55 +96,56 @@ class SimpleStreamingClient {
   }
 
   private setupEventListeners(): void {
-    if (!this.socket) return
+    if (!this.ws) return
 
-    this.socket.on('disconnect', () => {
+    this.ws.onclose = () => {
       this.log('Disconnected from server')
       this.updateState({ isConnected: false, isStreaming: false })
-    })
+    }
 
-    this.socket.on('stream-started', (data: { sessionId: string }) => {
-      this.log('Stream started', data)
-      this.updateState({ 
-        isStreaming: true, 
-        streamId: data.sessionId,
-        error: undefined 
-      })
-    })
-
-    this.socket.on('stream-ended', () => {
-      this.log('Stream ended')
-      this.updateState({ 
-        isStreaming: false, 
-        streamId: undefined,
-        viewerCount: 0 
-      })
-    })
-
-    this.socket.on('viewer-count', (count: number) => {
-      this.log('Viewer count updated', count)
-      this.updateState({ viewerCount: count })
-      this.events.onViewerCount?.(count)
-    })
-
-    this.socket.on('stream-error', (error: { message: string }) => {
-      this.log('Stream error', error)
-      this.emitError(error.message)
-    })
-
-    this.socket.on('stream-offer', (offer: RTCSessionDescriptionInit) => {
-      this.log('Received stream offer')
-      this.handleStreamOffer(offer)
-    })
+    this.ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data)
+        this.handleMessage(message)
+      } catch (error) {
+        this.log('Error parsing message', error)
+      }
+    }
   }
 
-  private handleStreamOffer(offer: RTCSessionDescriptionInit): void {
-    // This will be implemented by specific components
-    this.log('Stream offer received', offer.type)
+  private handleMessage(message: any): void {
+    this.log('Received message', message.type)
+
+    switch (message.type) {
+      case 'stream-started':
+        this.updateState({ 
+          isStreaming: true, 
+          streamId: message.sessionId,
+          error: undefined 
+        })
+        break
+
+      case 'stream-ended':
+        this.updateState({ 
+          isStreaming: false, 
+          streamId: undefined,
+          viewerCount: 0 
+        })
+        break
+
+      case 'viewer-count':
+        this.updateState({ viewerCount: message.count })
+        this.events.onViewerCount?.(message.count)
+        break
+
+      case 'error':
+        this.emitError(message.message)
+        break
+    }
   }
 
   async startBroadcast(streamType: 'webcam' | 'screen' | 'both' = 'webcam'): Promise<boolean> {
-    if (!this.socket?.connected) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.emitError('Not connected to server')
       return false
     }
@@ -160,11 +153,11 @@ class SimpleStreamingClient {
     try {
       this.log('Starting broadcast', streamType)
       
-      // Simple emit with just the data object
-      this.socket.emit('start-broadcast', {
+      this.ws.send(JSON.stringify({
+        type: 'start-broadcast',
         streamType,
         timestamp: new Date().toISOString()
-      })
+      }))
 
       return true
     } catch (error) {
@@ -174,82 +167,41 @@ class SimpleStreamingClient {
   }
 
   stopBroadcast(): void {
-    if (!this.socket?.connected) return
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
     try {
       this.log('Stopping broadcast')
-      this.socket.emit('stop-broadcast', {
+      this.ws.send(JSON.stringify({
+        type: 'stop-broadcast',
         timestamp: new Date().toISOString()
-      })
+      }))
     } catch (error) {
       this.log('Error stopping broadcast', error)
     }
   }
 
   joinStream(streamId?: string): void {
-    if (!this.socket?.connected) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.emitError('Not connected to server')
       return
     }
 
     try {
       this.log('Joining stream', streamId)
-      this.socket.emit('join-stream', {
+      this.ws.send(JSON.stringify({
+        type: 'join-stream',
         sessionId: streamId,
         timestamp: new Date().toISOString()
-      })
+      }))
     } catch (error) {
       this.emitError('Failed to join stream: ' + (error instanceof Error ? error.message : 'Unknown error'))
     }
   }
 
-  leaveStream(): void {
-    if (!this.socket?.connected) return
-
-    try {
-      this.log('Leaving stream')
-      this.socket.emit('leave-stream', {
-        timestamp: new Date().toISOString()
-      })
-    } catch (error) {
-      this.log('Error leaving stream', error)
-    }
-  }
-
-  sendOffer(offer: RTCSessionDescriptionInit): void {
-    if (!this.socket?.connected) return
-
-    try {
-      this.socket.emit('stream-offer', offer)
-    } catch (error) {
-      this.log('Error sending offer', error)
-    }
-  }
-
-  sendAnswer(answer: RTCSessionDescriptionInit): void {
-    if (!this.socket?.connected) return
-
-    try {
-      this.socket.emit('stream-answer', answer)
-    } catch (error) {
-      this.log('Error sending answer', error)
-    }
-  }
-
-  sendIceCandidate(candidate: RTCIceCandidateInit): void {
-    if (!this.socket?.connected) return
-
-    try {
-      this.socket.emit('ice-candidate', candidate)
-    } catch (error) {
-      this.log('Error sending ICE candidate', error)
-    }
-  }
-
   disconnect(): void {
-    if (this.socket) {
-      this.socket.disconnect()
-      this.socket = null
+    if (this.ws) {
+      this.ws.close()
+      this.ws = null
     }
     this.updateState({ 
       isConnected: false, 
@@ -271,5 +223,3 @@ class SimpleStreamingClient {
     return this.state.isStreaming
   }
 }
-
-export { SimpleStreamingClient }

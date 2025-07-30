@@ -1,191 +1,142 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { SimpleStreamingClient, StreamState } from '@/lib/simple-streaming'
 
 interface SimpleStreamViewerProps {
   serverUrl?: string
   streamId?: string
-  onStateChange?: (state: StreamState) => void
 }
 
 export default function SimpleStreamViewer({ 
   serverUrl = 'ws://localhost:3001',
-  streamId,
-  onStateChange 
+  streamId 
 }: SimpleStreamViewerProps) {
-  const [streamState, setStreamState] = useState<StreamState>({
-    isConnected: false,
-    isStreaming: false,
-    viewerCount: 0
-  })
+  const [isConnected, setIsConnected] = useState(false)
+  const [isStreamAvailable, setIsStreamAvailable] = useState(false)
+  const [viewerCount, setViewerCount] = useState(0)
   const [error, setError] = useState<string>('')
   const [isInitializing, setIsInitializing] = useState(true)
-  const [isWaitingForStream, setIsWaitingForStream] = useState(false)
 
-  const streamingClientRef = useRef<SimpleStreamingClient | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
     initializeViewer()
-
-    return () => {
-      cleanup()
-    }
+    return () => cleanup()
   }, [])
 
   const initializeViewer = async () => {
     try {
       setIsInitializing(true)
-      setError('')
-
-      // Create streaming client
-      streamingClientRef.current = new SimpleStreamingClient(
-        { 
-          serverUrl,
-          debug: true 
-        },
-        {
-          onStateChange: (state) => {
-            setStreamState(state)
-            onStateChange?.(state)
-            
-            if (state.error) {
-              setError(state.error)
-            }
-
-            // Auto-join stream when it becomes available
-            if (state.isConnected && !state.isStreaming && !isWaitingForStream) {
-              setIsWaitingForStream(true)
-              setTimeout(() => {
-                joinStream()
-              }, 1000)
-            }
-          },
-          onError: (errorMsg) => {
-            setError(errorMsg)
-          },
-          onViewerCount: (count) => {
-            console.log('Viewer count updated:', count)
-          }
-        }
-      )
-
-      // Setup WebRTC offer handler
-      if (streamingClientRef.current) {
-        const client = streamingClientRef.current as any
-        const originalSetupEventListeners = client.setupEventListeners
-        
-        client.setupEventListeners = function() {
-          originalSetupEventListeners.call(this)
-          
-          if (this.socket) {
-            this.socket.on('stream-offer', async (offer: RTCSessionDescriptionInit) => {
-              await handleStreamOffer(offer)
-            })
-          }
-        }
-      }
-
-      // Connect to server
-      const connected = await streamingClientRef.current.connect()
-      if (!connected) {
-        setError('Failed to connect to streaming server')
-      } else {
-        // Try to join stream after connection
-        setTimeout(() => {
-          joinStream()
-        }, 1000)
-      }
-
+      await connectWebSocket()
+      
+      // Auto-join stream after connection
+      setTimeout(() => {
+        joinStream()
+      }, 1000)
+      
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Initialization failed')
+      setError(err instanceof Error ? err.message : 'Failed to initialize')
     } finally {
       setIsInitializing(false)
     }
   }
 
-  const cleanup = () => {
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close()
-      peerConnectionRef.current = null
+  const connectWebSocket = async (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      try {
+        const ws = new WebSocket(serverUrl + '/ws')
+        wsRef.current = ws
+
+        ws.onopen = () => {
+          console.log('✅ WebSocket connected')
+          setIsConnected(true)
+          resolve()
+        }
+
+        ws.onclose = () => {
+          console.log('🔌 WebSocket disconnected')
+          setIsConnected(false)
+          setIsStreamAvailable(false)
+        }
+
+        ws.onerror = (error) => {
+          console.error('❌ WebSocket error:', error)
+          reject(new Error('WebSocket connection failed'))
+        }
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data)
+            handleMessage(message)
+          } catch (err) {
+            console.error('❌ Error parsing message:', err)
+          }
+        }
+
+        setTimeout(() => {
+          if (ws.readyState !== WebSocket.OPEN) {
+            reject(new Error('Connection timeout'))
+          }
+        }, 10000)
+
+      } catch (err) {
+        reject(err)
+      }
+    })
+  }
+
+  const handleMessage = (message: any) => {
+    switch (message.type) {
+      case 'stream-available':
+        setIsStreamAvailable(true)
+        console.log('✅ Stream available:', message.sessionId)
+        break
+        
+      case 'stream-unavailable':
+        setIsStreamAvailable(false)
+        if (videoRef.current) {
+          videoRef.current.srcObject = null
+        }
+        break
+        
+      case 'stream-joined':
+        setIsStreamAvailable(true)
+        console.log('✅ Joined stream:', message.sessionId)
+        break
+        
+      case 'viewer-count':
+        setViewerCount(message.count)
+        break
+        
+      case 'error':
+        setError(message.message)
+        break
     }
-    
-    streamingClientRef.current?.disconnect()
   }
 
   const joinStream = () => {
-    if (!streamingClientRef.current?.isConnected()) {
-      setError('Not connected to streaming server')
-      return
-    }
+    if (!isConnected) return
 
     try {
-      setError('')
-      streamingClientRef.current.joinStream(streamId)
-      setIsWaitingForStream(true)
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'join-stream',
+          sessionId: streamId,
+          timestamp: new Date().toISOString()
+        }))
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to join stream')
+      console.error('❌ Error joining stream:', err)
+      setError('Failed to join stream')
     }
   }
 
-  const handleStreamOffer = async (offer: RTCSessionDescriptionInit) => {
-    try {
-      console.log('Received stream offer, setting up peer connection...')
-
-      // Create peer connection
-      const pc = new RTCPeerConnection({
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-      })
-
-      peerConnectionRef.current = pc
-
-      // Handle incoming stream
-      pc.ontrack = (event) => {
-        console.log('Received remote stream')
-        if (videoRef.current && event.streams[0]) {
-          videoRef.current.srcObject = event.streams[0]
-          videoRef.current.play().catch(console.error)
-          setIsWaitingForStream(false)
-        }
-      }
-
-      // Handle ICE candidates
-      pc.onicecandidate = (event) => {
-        if (event.candidate && streamingClientRef.current) {
-          streamingClientRef.current.sendIceCandidate(event.candidate)
-        }
-      }
-
-      // Set remote description and create answer
-      await pc.setRemoteDescription(new RTCSessionDescription(offer))
-      const answer = await pc.createAnswer()
-      await pc.setLocalDescription(answer)
-
-      // Send answer back
-      if (streamingClientRef.current) {
-        streamingClientRef.current.sendAnswer(answer)
-      }
-
-    } catch (err) {
-      console.error('Error handling stream offer:', err)
-      setError('Failed to connect to stream')
+  const cleanup = () => {
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
     }
-  }
-
-  const handleRetryConnection = async () => {
-    setError('')
-    setIsWaitingForStream(false)
-    await initializeViewer()
-  }
-
-  const handleJoinStream = () => {
-    setError('')
-    joinStream()
   }
 
   if (isInitializing) {
@@ -204,21 +155,21 @@ export default function SimpleStreamViewer({
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className={`w-3 h-3 rounded-full ${
-              streamState.isConnected ? 'bg-green-500' : 'bg-red-500'
+              isConnected ? 'bg-green-500' : 'bg-red-500'
             }`}></div>
             <span className="font-medium">
-              {streamState.isConnected ? 'Connected' : 'Disconnected'}
+              {isConnected ? 'Connected' : 'Disconnected'}
             </span>
-            {isWaitingForStream && (
+            {!isStreamAvailable && isConnected && (
               <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-sm font-medium">
                 Waiting for stream...
               </span>
             )}
           </div>
           
-          {streamState.viewerCount > 0 && (
+          {viewerCount > 0 && (
             <div className="text-sm text-gray-600">
-              {streamState.viewerCount} viewer{streamState.viewerCount !== 1 ? 's' : ''}
+              {viewerCount} viewer{viewerCount !== 1 ? 's' : ''}
             </div>
           )}
         </div>
@@ -234,22 +185,12 @@ export default function SimpleStreamViewer({
               </svg>
               <span className="text-red-800 font-medium">Error</span>
             </div>
-            <div className="flex space-x-2">
-              {!streamState.isConnected && (
-                <button
-                  onClick={handleRetryConnection}
-                  className="text-sm text-red-600 underline hover:text-red-800"
-                >
-                  Retry Connection
-                </button>
-              )}
-              <button
-                onClick={() => setError('')}
-                className="text-sm text-red-600 underline hover:text-red-800"
-              >
-                Dismiss
-              </button>
-            </div>
+            <button
+              onClick={() => setError('')}
+              className="text-sm text-red-600 underline hover:text-red-800"
+            >
+              Dismiss
+            </button>
           </div>
           <p className="text-red-700 mt-2">{error}</p>
         </div>
@@ -264,45 +205,41 @@ export default function SimpleStreamViewer({
             playsInline
             controls
             className="w-full h-full object-cover"
-            poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1920 1080'%3E%3Crect width='1920' height='1080' fill='%23111827'/%3E%3C/svg%3E"
           />
           
           {/* Waiting Overlay */}
-          {isWaitingForStream && (
+          {!isStreamAvailable && (
             <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center">
               <div className="text-center text-white">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-                <p className="text-lg font-semibold">Waiting for stream...</p>
-                <p className="text-sm text-gray-300 mt-2">
-                  Stream will appear automatically when broadcasting starts
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* No Stream Overlay */}
-          {!isWaitingForStream && !videoRef.current?.srcObject && streamState.isConnected && (
-            <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center">
-              <div className="text-center text-white">
-                <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
-                </svg>
-                <p className="text-lg font-semibold mb-2">No Active Stream</p>
-                <p className="text-sm text-gray-300 mb-4">
-                  Waiting for a broadcaster to start streaming...
-                </p>
-                <button
-                  onClick={handleJoinStream}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                >
-                  Check for Stream
-                </button>
+                {!isConnected ? (
+                  <>
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                    <p className="text-lg font-semibold">Connecting...</p>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                      <path d="M14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+                    </svg>
+                    <p className="text-lg font-semibold mb-2">Waiting for Stream</p>
+                    <p className="text-sm text-gray-300 mb-4">
+                      Stream will appear automatically when broadcasting starts
+                    </p>
+                    <button
+                      onClick={joinStream}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                    >
+                      Check for Stream
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           )}
 
           {/* Live Indicator */}
-          {videoRef.current?.srcObject && (
+          {isStreamAvailable && (
             <div className="absolute top-4 left-4">
               <span className="bg-red-600 text-white px-3 py-1 rounded-full text-sm font-medium flex items-center space-x-2">
                 <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
@@ -312,7 +249,7 @@ export default function SimpleStreamViewer({
           )}
 
           {/* Viewer Count */}
-          {streamState.viewerCount > 0 && (
+          {viewerCount > 0 && (
             <div className="absolute top-4 right-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded">
               <div className="flex items-center space-x-1">
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -320,7 +257,7 @@ export default function SimpleStreamViewer({
                   <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
                 </svg>
                 <span className="text-sm">
-                  {streamState.viewerCount} watching
+                  {viewerCount} watching
                 </span>
               </div>
             </div>
@@ -334,7 +271,7 @@ export default function SimpleStreamViewer({
           <div>
             <h3 className="text-lg font-semibold">Stream Viewer</h3>
             <p className="text-gray-600 text-sm">
-              {streamState.isConnected ? 
+              {isConnected ? 
                 'Connected and ready to watch streams' : 
                 'Disconnected from streaming server'
               }
@@ -342,18 +279,18 @@ export default function SimpleStreamViewer({
           </div>
           
           <div className="flex space-x-3">
-            {!streamState.isConnected && (
+            {!isConnected && (
               <button
-                onClick={handleRetryConnection}
+                onClick={initializeViewer}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
               >
                 Reconnect
               </button>
             )}
             
-            {streamState.isConnected && !isWaitingForStream && (
+            {isConnected && (
               <button
-                onClick={handleJoinStream}
+                onClick={joinStream}
                 className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
               >
                 Join Stream
@@ -361,14 +298,6 @@ export default function SimpleStreamViewer({
             )}
           </div>
         </div>
-      </div>
-
-      {/* Connection Info */}
-      <div className="text-center text-sm text-gray-500">
-        <p>Server: {serverUrl}</p>
-        {streamState.streamId && (
-          <p>Stream ID: {streamState.streamId}</p>
-        )}
       </div>
     </div>
   )
