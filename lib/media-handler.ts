@@ -1,4 +1,4 @@
-export interface MediaDeviceInfo {
+export interface MediaDeviceCapabilities {
   hasCamera: boolean
   hasMicrophone: boolean
   hasScreenShare: boolean
@@ -16,7 +16,7 @@ class MediaHandler {
   private webcamStream: MediaStream | null = null
   private screenStream: MediaStream | null = null
 
-  async checkDeviceSupport(): Promise<MediaDeviceInfo> {
+  async checkDeviceSupport(): Promise<MediaDeviceCapabilities> {
     try {
       // Check if getUserMedia is supported
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -175,20 +175,26 @@ class MediaHandler {
   }
 
   stopAllStreams(): void {
-    this.stopStream(this.currentStream)
-    this.stopStream(this.webcamStream)
-    this.stopStream(this.screenStream)
+    if (this.currentStream) {
+      this.stopStream(this.currentStream)
+    }
+    if (this.webcamStream) {
+      this.stopStream(this.webcamStream)
+    }
+    if (this.screenStream) {
+      this.stopStream(this.screenStream)
+    }
   }
 
   getCurrentStream(): MediaStream | null {
     return this.currentStream
   }
 
-  getWebcamStream(): MediaStream | null {
+  getActiveWebcamStream(): MediaStream | null {
     return this.webcamStream
   }
 
-  getScreenStream(): MediaStream | null {
+  getActiveScreenStream(): MediaStream | null {
     return this.screenStream
   }
 
