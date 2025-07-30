@@ -166,11 +166,11 @@ class MediaHandler {
         this.currentStream = null
       }
       if (targetStream === this.webcamStream) {
-        // FIXED: Explicitly assign null instead of undefined for type consistency
+        // FIXED: Convert undefined to null for proper type assignment
         this.webcamStream = null
       }
       if (targetStream === this.screenStream) {
-        // FIXED: Explicitly assign null instead of undefined for type consistency  
+        // FIXED: Convert undefined to null for proper type assignment
         this.screenStream = null
       }
     }
