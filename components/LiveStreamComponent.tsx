@@ -163,16 +163,21 @@ export default function LiveStreamComponent({
     try {
       setError('')
       
-      // Get user media
-      const constraints = streamType === 'screen' 
-        ? { video: { mediaSource: 'screen' as any }, audio: true }
-        : { video: true, audio: true }
-
       let stream: MediaStream
       if (streamType === 'screen') {
-        stream = await navigator.mediaDevices.getDisplayMedia(constraints)
+        // FIXED: Correct DisplayMediaStreamOptions type for getDisplayMedia
+        const displayConstraints: DisplayMediaStreamOptions = {
+          video: true,
+          audio: true
+        }
+        stream = await navigator.mediaDevices.getDisplayMedia(displayConstraints)
       } else {
-        stream = await navigator.mediaDevices.getUserMedia(constraints)
+        // FIXED: Correct MediaStreamConstraints type for getUserMedia
+        const userConstraints: MediaStreamConstraints = {
+          video: true,
+          audio: true
+        }
+        stream = await navigator.mediaDevices.getUserMedia(userConstraints)
       }
 
       localStreamRef.current = stream
