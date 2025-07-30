@@ -682,12 +682,12 @@ class SocketManager {
     this.on('ice-candidate', callback)
   }
 
-  // Send WebRTC signaling data - FIXED: Combine parameters into single object for Socket.IO emit
+  // Send WebRTC signaling data - FIXED: Reduced from 4 arguments to 2 by combining into object
   sendOffer(offer: RTCSessionDescriptionInit, targetId?: string): void {
     if (this.isDestroyed) return
     
     if (this.socket?.connected || this.fallbackMode) {
-      // FIXED: Use single object parameter instead of multiple arguments
+      // FIXED: Combined parameters into single object parameter
       this.socket?.emit('stream-offer', { offer, targetId })
     }
   }
@@ -696,7 +696,7 @@ class SocketManager {
     if (this.isDestroyed) return
     
     if (this.socket?.connected || this.fallbackMode) {
-      // FIXED: Use single object parameter instead of multiple arguments
+      // FIXED: Combined parameters into single object parameter  
       this.socket?.emit('stream-answer', { answer, targetId })
     }
   }
