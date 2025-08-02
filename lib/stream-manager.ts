@@ -21,9 +21,11 @@ interface StreamManagerConfig {
 }
 
 class StreamManager {
-  private currentStream: MediaStream | null = null
-  private webcamStream: MediaStream | null = null
-  private screenStream: MediaStream | null = null
+  private currentStream?: MediaStream
+  private webcamStream?: MediaStream
+  private screenStream?: MediaStream
+  private localStream?: MediaStream
+  private remoteStream?: MediaStream
   private peerConnections: Map<string, RTCPeerConnection> = new Map()
   private isStreaming = false
   private sessionId: string | null = null
@@ -151,7 +153,7 @@ class StreamManager {
       if (this.webcamStream) {
         // Turn off webcam
         stopMediaStream(this.webcamStream)
-        this.webcamStream = null
+        this.webcamStream = undefined
         
         // Remove webcam tracks from combined stream
         if (this.currentStream) {
@@ -197,7 +199,7 @@ class StreamManager {
       if (this.screenStream) {
         // Turn off screen share
         stopMediaStream(this.screenStream)
-        this.screenStream = null
+        this.screenStream = undefined
         
         // Remove screen tracks from combined stream
         if (this.currentStream) {
@@ -282,7 +284,7 @@ class StreamManager {
       if (streams.length > 1) {
         this.currentStream = await combineStreams(streams)
       } else {
-        this.currentStream = streams[0] || null
+        this.currentStream = streams[0]
       }
 
       log('info', `✅ Acquired ${streamType} stream with ${this.currentStream?.getTracks().length || 0} tracks`)
@@ -290,9 +292,9 @@ class StreamManager {
     } catch (error) {
       // Cleanup any partially created streams
       streams.forEach(stream => stopMediaStream(stream))
-      this.webcamStream = null
-      this.screenStream = null
-      this.currentStream = null
+      this.webcamStream = undefined
+      this.screenStream = undefined
+      this.currentStream = undefined
       throw error
     }
   }
@@ -485,17 +487,17 @@ class StreamManager {
   private async cleanup(): Promise<void> {
     if (this.currentStream) {
       stopMediaStream(this.currentStream)
-      this.currentStream = null
+      this.currentStream = undefined
     }
 
     if (this.webcamStream) {
       stopMediaStream(this.webcamStream)
-      this.webcamStream = null
+      this.webcamStream = undefined
     }
 
     if (this.screenStream) {
       stopMediaStream(this.screenStream)
-      this.screenStream = null
+      this.screenStream = undefined
     }
 
     log('info', '🧹 Stream cleanup completed')
@@ -525,7 +527,7 @@ class StreamManager {
     return this.streamType
   }
 
-  get stream(): MediaStream | null {
+  get stream(): MediaStream | undefined {
     return this.currentStream
   }
 

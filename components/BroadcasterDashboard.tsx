@@ -19,7 +19,7 @@ export default function BroadcasterDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
   
-  const streamRef = useRef<MediaStream | null>(null)
+  const streamRef = useRef<MediaStream | undefined>(undefined)
   const wsRef = useRef<WebSocket | null>(null)
   const sessionIdRef = useRef<string | null>(null)
 
@@ -239,7 +239,7 @@ export default function BroadcasterDashboard() {
       // Clean up stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop())
-        streamRef.current = null
+        streamRef.current = undefined
       }
     }
   }
@@ -261,7 +261,7 @@ export default function BroadcasterDashboard() {
     // Stop all tracks
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
-      streamRef.current = null
+      streamRef.current = undefined
     }
 
     // Reset state
@@ -344,7 +344,7 @@ export default function BroadcasterDashboard() {
     // Stop stream
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
-      streamRef.current = null
+      streamRef.current = undefined
     }
   }
 

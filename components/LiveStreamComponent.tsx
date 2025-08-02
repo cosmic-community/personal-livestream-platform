@@ -32,7 +32,7 @@ export default function LiveStreamComponent({
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
-  const localStreamRef = useRef<MediaStream | null>(null)
+  const localStreamRef = useRef<MediaStream | undefined>(undefined)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
 
   // WebRTC Configuration
@@ -214,7 +214,7 @@ export default function LiveStreamComponent({
       // Stop local stream
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => track.stop())
-        localStreamRef.current = null
+        localStreamRef.current = undefined
       }
 
       // Clear video
@@ -259,7 +259,7 @@ export default function LiveStreamComponent({
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop())
-      localStreamRef.current = null
+      localStreamRef.current = undefined
     }
 
     if (peerConnectionRef.current) {

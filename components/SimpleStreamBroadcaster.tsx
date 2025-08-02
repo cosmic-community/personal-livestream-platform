@@ -11,7 +11,7 @@ export default function SimpleStreamBroadcaster() {
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
+  const streamRef = useRef<MediaStream | undefined>(undefined)
 
   useEffect(() => {
     initializeBroadcaster()
@@ -133,7 +133,7 @@ export default function SimpleStreamBroadcaster() {
     try {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop())
-        streamRef.current = null
+        streamRef.current = undefined
       }
 
       if (videoRef.current) {
@@ -157,7 +157,7 @@ export default function SimpleStreamBroadcaster() {
   const cleanup = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
-      streamRef.current = null
+      streamRef.current = undefined
     }
 
     if (wsRef.current) {

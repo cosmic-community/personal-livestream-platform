@@ -12,7 +12,7 @@ export class StreamingCore {
   private config: StreamingConfig
   private mediaHandler: MediaHandler
   private isInitialized = false
-  private currentStream: MediaStream | null = null
+  private currentStream?: MediaStream
   private streamState: StreamState = {
     isLive: false,
     isConnecting: false,
@@ -310,7 +310,7 @@ export class StreamingCore {
   private cleanup(): void {
     if (this.currentStream) {
       this.mediaHandler.stopStream(this.currentStream)
-      this.currentStream = null
+      this.currentStream = undefined
     }
     
     this.mediaHandler.stopAllStreams()
@@ -326,7 +326,7 @@ export class StreamingCore {
   }
 
   // Public getters and methods
-  getCurrentStream(): MediaStream | null {
+  getCurrentStream(): MediaStream | undefined {
     return this.currentStream
   }
 
