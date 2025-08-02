@@ -36,13 +36,12 @@ interface SignalPayload {
 // Enhanced Mock socket for fallback mode (fixes TS2551 error by adding connect method)
 class MockSocket {
   public id: string = 'mock-' + Math.random().toString(36).substr(2, 9)
-  public connected: boolean = true
+  public connected: boolean = false
   private eventHandlers: Map<string, Function[]> = new Map()
   private heartbeatInterval: NodeJS.Timeout | null = null
 
   constructor() {
     log('info', '🔧 Mock socket initialized for fallback mode')
-    this.startHeartbeat()
   }
 
   private startHeartbeat(): void {
@@ -55,6 +54,7 @@ class MockSocket {
   connect(): void {
     this.connected = true
     log('info', '🔧 Mock socket connected')
+    this.startHeartbeat()
     // Simulate connection event
     setTimeout(() => {
       this.trigger('connect')
