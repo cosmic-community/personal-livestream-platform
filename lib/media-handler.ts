@@ -80,33 +80,51 @@ class MediaHandler {
     }
   }
 
-  /** Acquire screen-share (with audio) */
-  async getScreenStream(): Promise<MediaStream> {
+  /** Acquire screen-share (with audio) - optional */
+  async getScreenStream(): Promise<MediaStream | undefined> {
     try {
-      if (!navigator.mediaDevices.getDisplayMedia) {
-        throw new Error('Screen sharing not supported')
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        console.warn('Screen sharing not supported')
+        return undefined
       }
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
       this.screenStream = stream
       return stream
     } catch (err: any) {
-      throw new Error(this.getMediaErrorMessage(err))
+      console.warn('Screen sharing failed:', this.getMediaErrorMessage(err))
+      return undefined
     }
   }
 
-  /** Combine webcam + screen into one merged MediaStream */
+  /** Combine webcam + screen into one merged MediaStream - all optional */
   async getCombinedStream(
     includeWebcam = true,
     includeScreen = true
-  ): Promise<MediaStream> {
+  ): Promise<MediaStream | undefined> {
     const streams: MediaStream[] = []
+    
     if (includeWebcam) {
-      try { streams.push(await this.getWebcamStream()) } catch { }
+      try { 
+        const webcamStream = await this.getWebcamStream()
+        if (webcamStream) streams.push(webcamStream)
+      } catch (err) {
+        console.warn('Webcam stream failed:', err)
+      }
     }
+    
     if (includeScreen) {
-      try { streams.push(await this.getScreenStream()) } catch { }
+      try { 
+        const screenStream = await this.getScreenStream()
+        if (screenStream) streams.push(screenStream)
+      } catch (err) {
+        console.warn('Screen stream failed:', err)
+      }
     }
-    if (streams.length === 0) throw new Error('No media streams available')
+    
+    if (streams.length === 0) {
+      console.warn('No media streams available')
+      return undefined
+    }
 
     const combined = streams.length === 1
       ? streams[0]
@@ -119,18 +137,31 @@ class MediaHandler {
     return combined
   }
 
-  /** Fresh camera+mic */
-  async startLocal(): Promise<void> {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-    this.localStream = stream
+  /** Fresh camera+mic - optional */
+  async startLocal(): Promise<boolean> {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      this.localStream = stream
+      return true
+    } catch (err) {
+      console.warn('Failed to start local stream:', err)
+      return false
+    }
   }
 
-  /** Load whatever remote stream was last set */
-  async startRemote(): Promise<void> {
-    const remoteStream = await this.getRemoteStream()
-    // Fix: Handle undefined case properly - only assign if stream exists
-    if (remoteStream) {
-      this.remoteStream = remoteStream
+  /** Load whatever remote stream was last set - optional */
+  async startRemote(): Promise<boolean> {
+    try {
+      const remoteStream = await this.getRemoteStream()
+      // Fix: Only assign if stream exists and handle undefined properly
+      if (remoteStream) {
+        this.remoteStream = remoteStream
+        return true
+      }
+      return false
+    } catch (err) {
+      console.warn('Failed to start remote stream:', err)
+      return false
     }
   }
 
@@ -157,6 +188,16 @@ class MediaHandler {
 
   setRemoteStream(stream?: MediaStream): void {
     this.remoteStream = stream
+  }
+
+  /** Check if streaming is available on this device */
+  isStreamingSupported(): boolean {
+    return !!(navigator.mediaDevices?.getUserMedia)
+  }
+
+  /** Check if any streams are currently active */
+  hasActiveStreams(): boolean {
+    return !!(this.currentStream || this.webcamStream || this.screenStream || this.localStream)
   }
 
   private getMediaErrorMessage(error: any): string {
