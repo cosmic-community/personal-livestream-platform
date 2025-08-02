@@ -624,7 +624,7 @@ class SocketManager {
           reject(new Error(error.message || 'Failed to start stream'))
         })
 
-        // Emit the start broadcast event with proper data structure
+        // FIXED: Using Socket.IO emit with 2 parameters only (event + payload object)
         this.socket.emit('start-broadcast', {
           streamType,
           timestamp: new Date().toISOString(),
