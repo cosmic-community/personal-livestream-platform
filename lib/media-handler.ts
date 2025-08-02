@@ -15,7 +15,6 @@ class MediaHandler {
   private currentStream: MediaStream | null = null
   private webcamStream: MediaStream | null = null
   private screenStream: MediaStream | null = null
-  // FIXED: streams start out empty — never hold pure `undefined`
   private localStream: MediaStream | null = null
   private remoteStream: MediaStream | null = null
 
@@ -174,12 +173,13 @@ class MediaHandler {
       video: true,
       audio: true
     })
-    this.localStream = stream       // always a MediaStream
+    this.localStream = stream
   }
 
   async startRemote() {
-    // FIXED: if getRemoteStream() might return undefined, force it to null
-    this.remoteStream = (await this.getRemoteStream()) ?? null
+    // FIXED: Convert undefined to null to match property type
+    const remoteStreamResult = await this.getRemoteStream()
+    this.remoteStream = remoteStreamResult ?? null
   }
 
   stopStream(stream?: MediaStream): void {
@@ -241,18 +241,15 @@ class MediaHandler {
   }
 
   setRemoteStream(stream: MediaStream | undefined): void {
-    // FIXED: Coalesce undefined into null for consistent typing
+    // FIXED: Convert undefined to null to match property type
     this.remoteStream = stream ?? null
   }
 
   // Method to handle other potential undefined assignments
   updateRemoteStream(maybeStream: MediaStream | undefined): void {
-    // FIXED: Use nullish coalescing to prevent undefined assignment
+    // FIXED: Convert undefined to null to match property type
     this.remoteStream = maybeStream ?? null
   }
-
-  /** If you use `this.localStream` or `this.remoteStream` elsewhere,
-   *  always guard against null before using them. */
   
   private getMediaErrorMessage(error: any): string {
     if (!error) return 'Unknown media error'

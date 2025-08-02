@@ -604,18 +604,18 @@ class SocketManager {
     return (this.socket?.connected || this.fallbackMode) && !this.isDestroyed
   }
 
-  // FIXED: Socket.IO emit methods - bundled parameters into single payload objects
+  // FIXED: Socket.IO emit methods - using proper 2-parameter format with payload objects
   joinRoom(roomId: string, userId: string, streamId: string): void {
     if (this.socket && !this.isDestroyed) {
       // FIXED: Using single payload object instead of multiple parameters
-      this.socket.emit('join-room', { roomId, userId, streamId } as JoinRoomPayload)
+      this.socket.emit('join-room', { roomId, userId, streamId })
     }
   }
 
   sendSignal(toId: string, fromId: string, signalData: any): void {
     if (this.socket && !this.isDestroyed) {
       // FIXED: Using single payload object instead of multiple parameters  
-      this.socket.emit('signal', { toId, fromId, signalData } as SignalPayload)
+      this.socket.emit('signal', { toId, fromId, signalData })
     }
   }
 
@@ -664,7 +664,7 @@ class SocketManager {
           reject(new Error(error.message || 'Failed to start stream'))
         })
 
-        // Using Socket.IO emit with single payload object
+        // Using standard Socket.IO emit with single payload object
         this.socket.emit('start-broadcast', {
           streamType,
           timestamp: new Date().toISOString(),
