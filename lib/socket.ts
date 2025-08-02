@@ -33,7 +33,7 @@ interface SignalPayload {
   signalData: any
 }
 
-// Enhanced Mock socket for fallback mode
+// Enhanced Mock socket for fallback mode (fixes TS2551 error by adding connect method)
 class MockSocket {
   public id: string = 'mock-' + Math.random().toString(36).substr(2, 9)
   public connected: boolean = true
@@ -49,6 +49,16 @@ class MockSocket {
     this.heartbeatInterval = setInterval(() => {
       this.trigger('heartbeat-ack', { timestamp: Date.now() })
     }, 30000)
+  }
+
+  // Add connect method to fix TS2551 error
+  connect(): void {
+    this.connected = true
+    log('info', '🔧 Mock socket connected')
+    // Simulate connection event
+    setTimeout(() => {
+      this.trigger('connect')
+    }, 100)
   }
 
   emit(event: string, data?: any): void {
@@ -171,12 +181,26 @@ class SocketManager {
         this.broadcastChannel = new BroadcastChannel('livestream-socket')
         this.broadcastChannel.addEventListener('message', event => {
           const { type, data } = event.data
-          this.triggerEvent?.(type, data)
+          this.triggerEvent(type, data)
         })
         log('info', '📡 BroadcastChannel initialized')
       }
     } catch (e) {
       log('warn', 'BroadcastChannel setup failed', e)
+    }
+  }
+
+  // Add triggerEvent method to fix TS2339 error
+  private triggerEvent(event: string, data?: any): void {
+    const callbacks = this.eventCallbacks.get(event)
+    if (callbacks) {
+      callbacks.forEach(callback => {
+        try {
+          callback(data)
+        } catch (error) {
+          log('error', `Error in event callback for ${event}:`, error)
+        }
+      })
     }
   }
 
@@ -303,9 +327,14 @@ class SocketManager {
           }
         })
 
-        // Start the connection
+        // Start the connection - fix by calling connect method properly
         try {
-          this.socket.connect()
+          if ('connect' in this.socket) {
+            this.socket.connect()
+          } else {
+            // For MockSocket, call connect method
+            (this.socket as MockSocket).connect()
+          }
         } catch (error) {
           cleanUp()
           log('error', '❌ Failed to initiate connection:', error)

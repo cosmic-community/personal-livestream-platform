@@ -52,6 +52,14 @@ export const STREAM_CONFIG = {
   }
 }
 
+// Export WebRTC configuration function (fixes TS2305 error)
+export function getWebRTCConfig(): RTCConfiguration {
+  return {
+    iceServers: STREAM_CONFIG.WEBRTC.iceServers,
+    ...STREAM_CONFIG.WEBRTC.configuration
+  }
+}
+
 // Enhanced logging function with better error tracking
 export function log(level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: any): void {
   if (!STREAM_CONFIG.LOGGING.enableConsole) return
@@ -143,14 +151,21 @@ export async function testNetworkConnectivity(): Promise<boolean> {
   }
 }
 
-// Server health check
+// Server health check (fixes TS2769 error by removing invalid timeout property)
 export async function checkServerHealth(url: string): Promise<boolean> {
   try {
     const httpUrl = url.replace('ws://', 'http://').replace('wss://', 'https://')
+    
+    // Use AbortController for timeout instead of invalid timeout property
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000)
+    
     const response = await fetch(`${httpUrl}/health`, {
       method: 'GET',
-      timeout: 5000
+      signal: controller.signal
     })
+    
+    clearTimeout(timeoutId)
     return response.ok
   } catch {
     return false
