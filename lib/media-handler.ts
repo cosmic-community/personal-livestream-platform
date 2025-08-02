@@ -54,8 +54,8 @@ class MediaHandler {
     const defaultConstraints: MediaStreamConstraints = {
       video: {
         width: { ideal: 1280, max: 1920, min: 640 },
-        height: { ideal: 720,  max: 1080, min: 480 },
-        frameRate: { ideal: 30,  max: 60,   min: 15 }
+        height:{ ideal:  720, max: 1080, min: 480 },
+        frameRate:{ ideal:  30, max:   60, min:  15 }
       },
       audio: {
         echoCancellation: true,
@@ -63,10 +63,11 @@ class MediaHandler {
         autoGainControl: true
       }
     }
+
     const finalConstraints = constraints
       ? {
-          video: constraints.video  ?? defaultConstraints.video,
-          audio: constraints.audio  ?? defaultConstraints.audio
+          video: constraints.video ?? defaultConstraints.video,
+          audio: constraints.audio ?? defaultConstraints.audio
         }
       : defaultConstraints
 
@@ -76,7 +77,7 @@ class MediaHandler {
     return stream
   }
 
-  /** Opens a screen‐share + (optional) audio */
+  /** Opens a screen‐share + optional audio */
   async getScreenStream(): Promise<MediaStream> {
     if (!navigator.mediaDevices.getDisplayMedia) {
       throw new Error('Screen sharing is not supported in this browser')
@@ -84,8 +85,8 @@ class MediaHandler {
     const stream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         width: { ideal: 1920, max: 3840, min: 1280 },
-        height:{ ideal: 1080, max: 2160, min: 720 },
-        frameRate:{ ideal: 30,   max: 60,   min: 15 }
+        height:{ ideal: 1080, max: 2160, min:  720 },
+        frameRate:{ ideal:  30, max:   60, min:  15 }
       },
       audio: {
         echoCancellation: false,
@@ -96,7 +97,7 @@ class MediaHandler {
     return stream
   }
 
-  /** Combines webcam + screen into one track‐merged stream */
+  /** Combines webcam + screen into one merged stream */
   async getCombinedStream(
     includeWebcam: boolean = true,
     includeScreen: boolean = true
@@ -142,10 +143,9 @@ class MediaHandler {
     this.localStream = stream
   }
 
-  /** Pulls in an already‐cached remote stream */
+  /** Loads the cached remote stream (or null) */
   async startRemote(): Promise<void> {
-    const stream = await this.getRemoteStream()
-    this.remoteStream = stream
+    this.remoteStream = await this.getRemoteStream()
   }
 
   stopStream(stream?: MediaStream | null): void {
@@ -160,7 +160,7 @@ class MediaHandler {
   }
 
   stopAllStreams(): void {
-    [ this.currentStream, this.webcamStream, this.screenStream, this.localStream ]
+    [this.currentStream, this.webcamStream, this.screenStream, this.localStream]
       .forEach(s => s && this.stopStream(s))
   }
 
