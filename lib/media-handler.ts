@@ -12,11 +12,11 @@ export interface MediaConstraints {
 }
 
 class MediaHandler {
-  private currentStream: MediaStream | null | undefined = null
-  private webcamStream: MediaStream | null | undefined = null
-  private screenStream: MediaStream | null | undefined = null
-  private localStream: MediaStream | null | undefined = null
-  // FIXED: Allow null as "no stream yet" - prevents undefined assignment errors
+  private currentStream: MediaStream | null = null
+  private webcamStream: MediaStream | null = null
+  private screenStream: MediaStream | null = null
+  // FIXED: streams start out empty — never hold pure `undefined`
+  private localStream: MediaStream | null = null
   private remoteStream: MediaStream | null = null
 
   async checkDeviceSupport(): Promise<MediaDeviceCapabilities> {
@@ -88,9 +88,6 @@ class MediaHandler {
       const stream = await navigator.mediaDevices.getUserMedia(finalConstraints)
       this.webcamStream = stream
       this.localStream = stream
-      
-      // FIXED: Handle undefined-to-null coalescing for consistent state
-      this.localStream = (await this.getCachedStream()) ?? null
       
       return stream
     } catch (error) {
@@ -177,11 +174,11 @@ class MediaHandler {
       video: true,
       audio: true
     })
-    this.localStream = stream
+    this.localStream = stream       // always a MediaStream
   }
 
   async startRemote() {
-    // FIXED: Coalesce undefined into null to prevent type assignment errors
+    // FIXED: if getRemoteStream() might return undefined, force it to null
     this.remoteStream = (await this.getRemoteStream()) ?? null
   }
 
@@ -223,19 +220,19 @@ class MediaHandler {
     }
   }
 
-  getCurrentStream(): MediaStream | null | undefined {
+  getCurrentStream(): MediaStream | null {
     return this.currentStream
   }
 
-  getActiveWebcamStream(): MediaStream | null | undefined {
+  getActiveWebcamStream(): MediaStream | null {
     return this.webcamStream
   }
 
-  getActiveScreenStream(): MediaStream | null | undefined {
+  getActiveScreenStream(): MediaStream | null {
     return this.screenStream
   }
 
-  getLocalStream(): MediaStream | null | undefined {
+  getLocalStream(): MediaStream | null {
     return this.localStream
   }
 
@@ -254,6 +251,9 @@ class MediaHandler {
     this.remoteStream = maybeStream ?? null
   }
 
+  /** If you use `this.localStream` or `this.remoteStream` elsewhere,
+   *  always guard against null before using them. */
+  
   private getMediaErrorMessage(error: any): string {
     if (!error) return 'Unknown media error'
 

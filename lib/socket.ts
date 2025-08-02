@@ -283,7 +283,7 @@ class SocketManager {
       }
     })
 
-    // Handle server-side events with bundled parameters
+    // FIXED: Handle server-side events with destructured payload objects
     this.socket.on('join-room', ({ roomId, userId, streamId }: JoinRoomPayload) => {
       if (!this.isDestroyed) {
         log('info', '🏠 Room joined:', { roomId, userId, streamId })
