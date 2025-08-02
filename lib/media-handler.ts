@@ -139,9 +139,14 @@ class MediaHandler {
   }
 
   async startRemote(): Promise<void> {
+    // Fix: Handle the return type properly - getRemoteStream returns Promise<MediaStream | null>
     const stream = await this.getRemoteStream()
-    // Fix: Explicitly handle the null case and assign properly
-    this.remoteStream = stream ?? null
+    this.remoteStream = stream // This is already MediaStream | null, which matches the property type
+    
+    // If we need to ensure we have a stream, we should handle the null case:
+    if (!stream) {
+      throw new Error('No remote stream available')
+    }
   }
 
   stopStream(stream?: MediaStream | null): void {
