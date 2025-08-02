@@ -253,10 +253,12 @@ export class StreamingCore {
       } else {
         // Enable webcam
         const webcamStream = await this.mediaHandler.getWebcamStream()
-        // Add tracks to current stream if exists
+        // Add tracks to current stream if both exist
         if (this.currentStream && webcamStream) {
           webcamStream.getTracks().forEach(track => {
-            this.currentStream?.addTrack(track)
+            if (this.currentStream) {
+              this.currentStream.addTrack(track)
+            }
           })
         }
         this.streamState.webcamEnabled = true
@@ -289,10 +291,12 @@ export class StreamingCore {
       } else {
         // Enable screen share
         const screenStream = await this.mediaHandler.getScreenStream()
-        // Add tracks to current stream if exists
+        // Add tracks to current stream if both exist
         if (this.currentStream && screenStream) {
           screenStream.getTracks().forEach(track => {
-            this.currentStream?.addTrack(track)
+            if (this.currentStream) {
+              this.currentStream.addTrack(track)
+            }
           })
         }
         this.streamState.screenEnabled = true
