@@ -1,31 +1,19 @@
 export const STREAM_CONFIG = {
-  // Server URLs for WebSocket connections (fallback order)
+  // Try the NEXT_PUBLIC_WS_URL first, otherwise fall back to localhost for dev
   SERVER_URLS: [
-    // Try local development server first if in development
-    ...(process.env.NODE_ENV === 'development' ? ['ws://localhost:3001'] : []),
-    // Add your production WebSocket server URLs here
-    // 'wss://your-production-ws-server.com',
-    // 'wss://your-backup-ws-server.com'
+    process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001'
   ],
-  
   CONNECTION: {
-    timeout: 10000, // 10 seconds
-    reconnect: true,
-    reconnectAttempts: Infinity,
-    reconnectDelay: 1000,
-    reconnectDelayMax: 5000,
-    randomizationFactor: 0.5,
-    maxRetries: 3,
-    maxUrlAttempts: 2,
-    reconnectBackoff: [1000, 2000, 5000, 10000], // Progressive backoff
-    transports: ['websocket', 'polling'], // Allow fallback to polling
-    upgrade: true,
-    rememberUpgrade: true,
-    forceNew: false,
-    autoConnect: false, // We'll handle connection manually
-    withCredentials: false,
-    healthCheckInterval: 30000 // 30 seconds - health check interval
+    timeout:  5000,
+    maxRetries: 5,
+    maxUrlAttempts: 3,
+    reconnectBackoff: [500, 1000, 2000],
+    heartbeatInterval: 30000
   },
+  FALLBACK: {
+    enableBroadcastChannel: true
+  }
+}
 
   FALLBACK: {
     enableP2P: true,
