@@ -20,6 +20,18 @@ interface StreamErrorEvent {
   details?: any
 }
 
+interface JoinRoomPayload {
+  roomId: string
+  userId: string
+  streamId: string
+}
+
+interface SignalPayload {
+  toId: string
+  fromId: string
+  signalData: any
+}
+
 class SocketManager {
   private socket: Socket | null = null
   private reconnectAttempts = 0
@@ -579,6 +591,21 @@ class SocketManager {
     return (this.socket?.connected || this.fallbackMode) && !this.isDestroyed
   }
 
+  // FIXED: Socket.IO emit methods - bundled parameters into single payload objects
+  joinRoom(roomId: string, userId: string, streamId: string): void {
+    if (this.socket && !this.isDestroyed) {
+      // FIXED: Using single payload object instead of multiple parameters
+      this.socket.emit('join-room', { roomId, userId, streamId } as JoinRoomPayload)
+    }
+  }
+
+  sendSignal(toId: string, fromId: string, signalData: any): void {
+    if (this.socket && !this.isDestroyed) {
+      // FIXED: Using single payload object instead of multiple parameters  
+      this.socket.emit('signal', { toId, fromId, signalData } as SignalPayload)
+    }
+  }
+
   // Broadcasting events with enhanced error handling
   startBroadcast(streamType: StreamType): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -624,7 +651,7 @@ class SocketManager {
           reject(new Error(error.message || 'Failed to start stream'))
         })
 
-        // FIXED: Using Socket.IO emit with 2 parameters only (event + payload object)
+        // Using Socket.IO emit with single payload object
         this.socket.emit('start-broadcast', {
           streamType,
           timestamp: new Date().toISOString(),
@@ -682,12 +709,12 @@ class SocketManager {
     this.on('ice-candidate', callback)
   }
 
-  // Send WebRTC signaling data - FIXED: Using proper Socket.IO emit signature (2 parameters only)
+  // Send WebRTC signaling data - Using proper Socket.IO emit signature (2 parameters only)
   sendOffer(offer: RTCSessionDescriptionInit, targetId?: string): void {
     if (this.isDestroyed) return
     
     if (this.socket?.connected || this.fallbackMode) {
-      // FIXED: Using standard Socket.IO emit with 2 parameters only (event, data)
+      // Using standard Socket.IO emit with single payload object
       this.socket?.emit('stream-offer', { offer, targetId })
     }
   }
@@ -696,7 +723,7 @@ class SocketManager {
     if (this.isDestroyed) return
     
     if (this.socket?.connected || this.fallbackMode) {
-      // FIXED: Using standard Socket.IO emit with 2 parameters only (event, data)
+      // Using standard Socket.IO emit with single payload object
       this.socket?.emit('stream-answer', { answer, targetId })
     }
   }

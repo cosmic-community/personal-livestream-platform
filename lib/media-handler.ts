@@ -12,9 +12,11 @@ export interface MediaConstraints {
 }
 
 class MediaHandler {
-  private currentStream: MediaStream | null = null
-  private webcamStream: MediaStream | null = null
-  private screenStream: MediaStream | null = null
+  private currentStream: MediaStream | null | undefined = null
+  private webcamStream: MediaStream | null | undefined = null
+  private screenStream: MediaStream | null | undefined = null
+  private localStream: MediaStream | null | undefined = null
+  private remoteStream: MediaStream | undefined
 
   async checkDeviceSupport(): Promise<MediaDeviceCapabilities> {
     try {
@@ -51,6 +53,11 @@ class MediaHandler {
     }
   }
 
+  async getCachedStream(): Promise<MediaStream | undefined> {
+    // Placeholder method that might return undefined
+    return this.localStream ?? undefined
+  }
+
   async getWebcamStream(constraints?: MediaConstraints): Promise<MediaStream> {
     try {
       const defaultConstraints: MediaStreamConstraints = {
@@ -74,6 +81,11 @@ class MediaHandler {
 
       const stream = await navigator.mediaDevices.getUserMedia(finalConstraints)
       this.webcamStream = stream
+      this.localStream = stream
+      
+      // Handle undefined-to-null coalescing for consistent state
+      this.localStream = (await this.getCachedStream()) ?? null
+      
       return stream
     } catch (error) {
       console.error('Error getting webcam stream:', error)
@@ -171,6 +183,9 @@ class MediaHandler {
       if (targetStream === this.screenStream) {
         this.screenStream = null
       }
+      if (targetStream === this.localStream) {
+        this.localStream = null
+      }
     }
   }
 
@@ -184,18 +199,33 @@ class MediaHandler {
     if (this.screenStream) {
       this.stopStream(this.screenStream)
     }
+    if (this.localStream) {
+      this.stopStream(this.localStream)
+    }
   }
 
-  getCurrentStream(): MediaStream | null {
+  getCurrentStream(): MediaStream | null | undefined {
     return this.currentStream
   }
 
-  getActiveWebcamStream(): MediaStream | null {
+  getActiveWebcamStream(): MediaStream | null | undefined {
     return this.webcamStream
   }
 
-  getActiveScreenStream(): MediaStream | null {
+  getActiveScreenStream(): MediaStream | null | undefined {
     return this.screenStream
+  }
+
+  getLocalStream(): MediaStream | null | undefined {
+    return this.localStream
+  }
+
+  getRemoteStream(): MediaStream | undefined {
+    return this.remoteStream
+  }
+
+  setRemoteStream(stream: MediaStream | undefined): void {
+    this.remoteStream = stream
   }
 
   private getMediaErrorMessage(error: any): string {
