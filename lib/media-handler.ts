@@ -121,13 +121,17 @@ class MediaHandler {
 
   /** Fresh camera+mic */
   async startLocal(): Promise<void> {
-    const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-    this.localStream = s
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    this.localStream = stream
   }
 
   /** Load whatever remote stream was last set */
   async startRemote(): Promise<void> {
-    this.remoteStream = await this.getRemoteStream()
+    const remoteStream = await this.getRemoteStream()
+    // Fix: Handle undefined case properly - only assign if stream exists
+    if (remoteStream) {
+      this.remoteStream = remoteStream
+    }
   }
 
   stopStream(stream?: MediaStream): void {

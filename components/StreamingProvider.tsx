@@ -167,8 +167,8 @@ export function StreamingProvider({
     disconnect: () => streamingCore.disconnect(),
     isConnected: () => streamingCore.isConnected(),
     
-    // Stream access
-    getCurrentStream: () => streamingCore.getCurrentStream(),
+    // Stream access - Fix: Convert undefined to null for type consistency
+    getCurrentStream: () => streamingCore.getCurrentStream() ?? null,
     getStreamStats: () => streamingCore.getStreamStats()
   }
 
