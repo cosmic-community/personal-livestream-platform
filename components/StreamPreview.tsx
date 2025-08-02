@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 
 interface StreamPreviewProps {
-  stream: MediaStream | null
+  stream: MediaStream | null | undefined
 }
 
 export default function StreamPreview({ stream }: StreamPreviewProps) {
@@ -13,6 +13,9 @@ export default function StreamPreview({ stream }: StreamPreviewProps) {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream
       videoRef.current.play().catch(console.error)
+    } else if (videoRef.current && !stream) {
+      // Clear video when stream is null/undefined
+      videoRef.current.srcObject = null
     }
   }, [stream])
 

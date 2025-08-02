@@ -172,7 +172,7 @@ class StreamManager {
         this.webcamStream = await getUserMediaStream('webcam')
         
         // Add webcam tracks to combined stream
-        if (this.currentStream) {
+        if (this.currentStream && this.webcamStream) {
           this.webcamStream.getTracks().forEach(track => {
             this.currentStream?.addTrack(track)
           })
@@ -218,7 +218,7 @@ class StreamManager {
         this.screenStream = await getUserMediaStream('screen')
         
         // Add screen tracks to combined stream
-        if (this.currentStream) {
+        if (this.currentStream && this.screenStream) {
           this.screenStream.getTracks().forEach(track => {
             this.currentStream?.addTrack(track)
           })
@@ -245,12 +245,12 @@ class StreamManager {
       switch (streamType) {
         case 'webcam':
           this.webcamStream = await getUserMediaStream('webcam')
-          streams.push(this.webcamStream)
+          if (this.webcamStream) streams.push(this.webcamStream)
           break
 
         case 'screen':
           this.screenStream = await getUserMediaStream('screen')
-          streams.push(this.screenStream)
+          if (this.screenStream) streams.push(this.screenStream)
           break
 
         case 'both':
@@ -261,19 +261,16 @@ class StreamManager {
             getUserMediaStream('screen')
           ])
 
-          if (webcam.status === 'fulfilled') {
+          if (webcam.status === 'fulfilled' && webcam.value) {
             this.webcamStream = webcam.value
             streams.push(this.webcamStream)
           }
 
-          if (screen.status === 'fulfilled') {
+          if (screen.status === 'fulfilled' && screen.value) {
             this.screenStream = screen.value
             streams.push(this.screenStream)
           }
 
-          if (streams.length === 0) {
-            throw new Error('Failed to acquire any media streams')
-          }
           break
 
         default:
@@ -283,11 +280,15 @@ class StreamManager {
       // Combine streams if multiple
       if (streams.length > 1) {
         this.currentStream = await combineStreams(streams)
-      } else {
+      } else if (streams.length === 1) {
         this.currentStream = streams[0]
       }
 
-      log('info', `✅ Acquired ${streamType} stream with ${this.currentStream?.getTracks().length || 0} tracks`)
+      if (!this.currentStream) {
+        throw new Error('Failed to acquire any media streams')
+      }
+
+      log('info', `✅ Acquired ${streamType} stream with ${this.currentStream.getTracks().length} tracks`)
 
     } catch (error) {
       // Cleanup any partially created streams
@@ -305,7 +306,7 @@ class StreamManager {
       log('info', '📥 Handling incoming WebRTC offer')
 
       if (!this.currentStream) {
-        throw new Error('No active stream to offer')
+        log('warn', '⚠️ No active stream to offer, creating offer without media')
       }
 
       // Create peer connection for this viewer
@@ -323,7 +324,7 @@ class StreamManager {
         }
       )
 
-      // Add stream to peer connection
+      // Add stream to peer connection if available
       if (this.currentStream) {
         this.currentStream.getTracks().forEach(track => {
           peerConnection.addTrack(track, this.currentStream!)
@@ -382,7 +383,10 @@ class StreamManager {
 
   // Update all peer connections with new stream
   private async updatePeerConnections(): Promise<void> {
-    if (!this.currentStream) return
+    if (!this.currentStream) {
+      log('warn', '⚠️ No current stream to update peer connections with')
+      return
+    }
 
     try {
       const promises = Array.from(this.peerConnections.entries()).map(async ([viewerId, pc]) => {

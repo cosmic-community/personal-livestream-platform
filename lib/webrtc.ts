@@ -76,7 +76,7 @@ export const fallbackConstraints = {
 }
 
 // Get user media stream with enhanced error handling and retry logic
-export async function getUserMediaStream(streamType: 'webcam' | 'screen'): Promise<MediaStream> {
+export async function getUserMediaStream(streamType: 'webcam' | 'screen'): Promise<MediaStream | undefined> {
   const maxRetries = 3
   let lastError: Error | null = null
 
@@ -139,7 +139,7 @@ export async function getUserMediaStream(streamType: 'webcam' | 'screen'): Promi
     }
   }
   
-  // All attempts failed, provide specific error messages
+  // All attempts failed, log error and return undefined
   let errorMessage = `Failed to access ${streamType === 'webcam' ? 'camera' : 'screen'}.`
   
   if (lastError) {
@@ -158,45 +158,48 @@ export async function getUserMediaStream(streamType: 'webcam' | 'screen'): Promi
     }
   }
   
-  throw createStreamError('MEDIA_ACCESS_DENIED', errorMessage, lastError)
+  console.warn('⚠️ ' + errorMessage)
+  return undefined
 }
 
 // Combine multiple streams with error handling
-export async function combineStreams(streams: MediaStream[]): Promise<MediaStream> {
+export async function combineStreams(streams: (MediaStream | undefined)[]): Promise<MediaStream | undefined> {
   const combinedStream = new MediaStream()
   
   try {
-    if (!streams || streams.length === 0) {
-      throw new Error('No streams provided to combine')
+    const validStreams = streams.filter((stream): stream is MediaStream => 
+      stream !== undefined && stream !== null && typeof stream.getTracks === 'function'
+    )
+
+    if (validStreams.length === 0) {
+      console.warn('⚠️ No valid streams provided to combine')
+      return undefined
     }
 
-    streams.forEach((stream, index) => {
-      if (stream && stream.getTracks) {
-        const tracks = stream.getTracks()
-        tracks.forEach(track => {
-          if (track.readyState === 'live') {
-            // Clone track to avoid conflicts
-            const clonedTrack = track.clone()
-            combinedStream.addTrack(clonedTrack)
-            console.log(`➕ Added ${track.kind} track from stream ${index}: ${track.label}`)
-          } else {
-            console.warn(`⚠️ Skipping inactive track: ${track.label}`)
-          }
-        })
-      } else {
-        console.warn(`⚠️ Invalid stream at index ${index}:`, stream)
-      }
+    validStreams.forEach((stream, index) => {
+      const tracks = stream.getTracks()
+      tracks.forEach(track => {
+        if (track.readyState === 'live') {
+          // Clone track to avoid conflicts
+          const clonedTrack = track.clone()
+          combinedStream.addTrack(clonedTrack)
+          console.log(`➕ Added ${track.kind} track from stream ${index}: ${track.label}`)
+        } else {
+          console.warn(`⚠️ Skipping inactive track: ${track.label}`)
+        }
+      })
     })
     
     if (combinedStream.getTracks().length === 0) {
-      throw new Error('No active tracks found in provided streams')
+      console.warn('⚠️ No active tracks found in provided streams')
+      return undefined
     }
     
-    console.log(`✅ Combined ${streams.length} streams into one (${combinedStream.getTracks().length} tracks)`)
+    console.log(`✅ Combined ${validStreams.length} streams into one (${combinedStream.getTracks().length} tracks)`)
     return combinedStream
   } catch (error) {
     console.error('❌ Error combining streams:', error)
-    throw createStreamError('STREAM_COMBINE_FAILED', 'Failed to combine multiple streams', error)
+    return undefined
   }
 }
 
@@ -326,35 +329,37 @@ export function createPeerConnection(
 // Create offer for broadcaster with retry logic
 export async function createOffer(
   peerConnection: RTCPeerConnection,
-  stream: MediaStream
+  stream?: MediaStream
 ): Promise<RTCSessionDescriptionInit> {
   try {
     console.log('📤 Creating WebRTC offer...')
     
-    // Verify stream has active tracks
-    const activeTracks = stream.getTracks().filter(track => track.readyState === 'live')
-    if (activeTracks.length === 0) {
-      throw new Error('No active tracks in stream')
-    }
-    
-    // Add stream tracks to peer connection
-    activeTracks.forEach(track => {
-      console.log(`➕ Adding ${track.kind} track:`, track.label)
-      const sender = peerConnection.addTrack(track, stream)
-      
-      // Configure encoding parameters for better quality
-      if (track.kind === 'video') {
-        const transceiver = peerConnection.getTransceivers().find(t => t.sender === sender)
-        if (transceiver) {
-          transceiver.setCodecPreferences([
-            // Prefer H.264 for better compatibility
-            ...RTCRtpReceiver.getCapabilities('video')?.codecs.filter(codec => 
-              codec.mimeType.includes('H264')
-            ) || []
-          ])
-        }
+    // Add stream tracks to peer connection if stream is provided
+    if (stream) {
+      // Verify stream has active tracks
+      const activeTracks = stream.getTracks().filter(track => track.readyState === 'live')
+      if (activeTracks.length === 0) {
+        console.warn('⚠️ No active tracks in stream, creating offer without media')
+      } else {
+        activeTracks.forEach(track => {
+          console.log(`➕ Adding ${track.kind} track:`, track.label)
+          const sender = peerConnection.addTrack(track, stream)
+          
+          // Configure encoding parameters for better quality
+          if (track.kind === 'video') {
+            const transceiver = peerConnection.getTransceivers().find(t => t.sender === sender)
+            if (transceiver) {
+              const capabilities = RTCRtpReceiver.getCapabilities('video')
+              if (capabilities?.codecs) {
+                transceiver.setCodecPreferences(
+                  capabilities.codecs.filter(codec => codec.mimeType.includes('H264'))
+                )
+              }
+            }
+          }
+        })
       }
-    })
+    }
     
     // Create offer with enhanced options
     const offer = await peerConnection.createOffer({
@@ -438,7 +443,7 @@ export async function handleIceCandidate(
 }
 
 // Stop media stream safely with cleanup
-export function stopMediaStream(stream: MediaStream): void {
+export function stopMediaStream(stream?: MediaStream): void {
   try {
     if (stream && stream.getTracks) {
       const tracks = stream.getTracks()
@@ -529,7 +534,7 @@ export async function getMediaDevices(): Promise<{
 }> {
   try {
     // Request permissions first to get accurate device list
-    let tempStream: MediaStream | null = null
+    let tempStream: MediaStream | undefined = undefined
     try {
       tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     } catch (error) {
@@ -769,17 +774,24 @@ export async function testNetworkConnectivity(): Promise<{
 
 // Utility to restart media stream
 export async function restartMediaStream(
-  currentStream: MediaStream,
-  streamType: 'webcam' | 'screen'
-): Promise<MediaStream> {
+  currentStream?: MediaStream,
+  streamType: 'webcam' | 'screen' = 'webcam'
+): Promise<MediaStream | undefined> {
   console.log(`🔄 Restarting ${streamType} stream...`)
   
   // Stop current stream
-  stopMediaStream(currentStream)
+  if (currentStream) {
+    stopMediaStream(currentStream)
+  }
   
   // Get new stream
   const newStream = await getUserMediaStream(streamType)
   
-  console.log(`✅ ${streamType} stream restarted successfully`)
+  if (newStream) {
+    console.log(`✅ ${streamType} stream restarted successfully`)
+  } else {
+    console.warn(`⚠️ Failed to restart ${streamType} stream`)
+  }
+  
   return newStream
 }

@@ -149,57 +149,84 @@ export default function BroadcasterDashboard() {
 
     try {
       // Get media stream
-      let stream: MediaStream
+      let stream: MediaStream | undefined
 
       if (streamType === 'webcam') {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-            frameRate: { ideal: 30 }
-          },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        })
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 1280, max: 1920 },
+              height: { ideal: 720, max: 1080 },
+              frameRate: { ideal: 30 }
+            },
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            }
+          })
+        } catch (err) {
+          console.warn('Failed to get webcam stream:', err)
+          stream = undefined
+        }
       } else if (streamType === 'screen') {
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            frameRate: { ideal: 30 }
-          },
-          audio: true
-        })
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+              frameRate: { ideal: 30 }
+            },
+            audio: true
+          })
+        } catch (err) {
+          console.warn('Failed to get screen stream:', err)
+          stream = undefined
+        }
       } else {
         // Both - get webcam first, then screen
-        const webcamStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true
-        })
+        let webcamStream: MediaStream | undefined
+        let screenStream: MediaStream | undefined
         
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: true
-        })
+        try {
+          webcamStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
+          })
+        } catch (err) {
+          console.warn('Failed to get webcam stream:', err)
+        }
+        
+        try {
+          screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: true
+          })
+        } catch (err) {
+          console.warn('Failed to get screen stream:', err)
+        }
 
         // Combine streams (simplified approach)
-        stream = new MediaStream([
-          ...webcamStream.getVideoTracks(),
-          ...screenStream.getVideoTracks(),
-          ...webcamStream.getAudioTracks()
-        ])
+        if (webcamStream || screenStream) {
+          stream = new MediaStream()
+          if (webcamStream) {
+            webcamStream.getTracks().forEach(track => stream?.addTrack(track))
+          }
+          if (screenStream) {
+            screenStream.getTracks().forEach(track => stream?.addTrack(track))
+          }
+        }
       }
 
+      // Continue even if stream is undefined - some streaming scenarios might not require media
       streamRef.current = stream
 
       // Notify server to start broadcast
       const success = sendWebSocketMessage({
         type: 'start-broadcast',
         streamType,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        hasMedia: !!stream
       })
 
       if (!success) {
@@ -214,7 +241,7 @@ export default function BroadcasterDashboard() {
         screenEnabled: streamType === 'screen' || streamType === 'both'
       }))
 
-      console.log('✅ Stream started successfully')
+      console.log('✅ Stream started successfully', stream ? 'with media' : 'without media')
 
     } catch (error) {
       console.error('❌ Error starting stream:', error)
@@ -294,11 +321,16 @@ export default function BroadcasterDashboard() {
         setStreamState(prev => ({ ...prev, webcamEnabled: false }))
       } else {
         // Add webcam tracks
-        const webcamStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        webcamStream.getTracks().forEach(track => {
-          streamRef.current?.addTrack(track)
-        })
-        setStreamState(prev => ({ ...prev, webcamEnabled: true }))
+        try {
+          const webcamStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+          webcamStream.getTracks().forEach(track => {
+            streamRef.current?.addTrack(track)
+          })
+          setStreamState(prev => ({ ...prev, webcamEnabled: true }))
+        } catch (err) {
+          console.warn('Failed to add webcam stream:', err)
+          setError('Failed to enable webcam')
+        }
       }
     } catch (error) {
       console.error('❌ Error toggling webcam:', error)
@@ -322,11 +354,16 @@ export default function BroadcasterDashboard() {
         setStreamState(prev => ({ ...prev, screenEnabled: false }))
       } else {
         // Add screen tracks
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
-        screenStream.getTracks().forEach(track => {
-          streamRef.current?.addTrack(track)
-        })
-        setStreamState(prev => ({ ...prev, screenEnabled: true }))
+        try {
+          const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+          screenStream.getTracks().forEach(track => {
+            streamRef.current?.addTrack(track)
+          })
+          setStreamState(prev => ({ ...prev, screenEnabled: true }))
+        } catch (err) {
+          console.warn('Failed to add screen stream:', err)
+          setError('Failed to enable screen share')
+        }
       }
     } catch (error) {
       console.error('❌ Error toggling screen share:', error)
@@ -429,12 +466,10 @@ export default function BroadcasterDashboard() {
       </div>
 
       {/* Stream Preview */}
-      {streamRef.current && (
-        <div className="card">
-          <h2 className="text-xl font-semibold mb-4">Live Preview</h2>
-          <StreamPreview stream={streamRef.current} />
-        </div>
-      )}
+      <div className="card">
+        <h2 className="text-xl font-semibold mb-4">Live Preview</h2>
+        <StreamPreview stream={streamRef.current} />
+      </div>
 
       {/* Stream Stats */}
       <div className="card">

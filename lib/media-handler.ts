@@ -61,7 +61,7 @@ class MediaHandler {
   }
 
   /** Acquire camera+mic using optional constraints */
-  async getWebcamStream(constraints?: MediaConstraints): Promise<MediaStream> {
+  async getWebcamStream(constraints?: MediaConstraints): Promise<MediaStream | undefined> {
     try {
       const defaults: MediaStreamConstraints = { video: true, audio: true }
       const finalC = constraints
@@ -76,7 +76,8 @@ class MediaHandler {
       this.localStream = stream
       return stream
     } catch (err: any) {
-      throw new Error(this.getMediaErrorMessage(err))
+      console.warn('Failed to get webcam stream:', this.getMediaErrorMessage(err))
+      return undefined
     }
   }
 
@@ -152,10 +153,8 @@ class MediaHandler {
   /** Load whatever remote stream was last set - optional */
   async startRemote(): Promise<boolean> {
     try {
-      const remoteStream = await this.getRemoteStream()
-      // Fix: Only assign if stream exists and handle undefined properly
+      const remoteStream = this.remoteStream
       if (remoteStream) {
-        this.remoteStream = remoteStream
         return true
       }
       return false
