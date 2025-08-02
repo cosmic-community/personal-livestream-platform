@@ -4,27 +4,21 @@ export const STREAM_CONFIG = {
     process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001'
   ],
   CONNECTION: {
-    timeout:  5000,
+    timeout: 5000,
     maxRetries: 5,
     maxUrlAttempts: 3,
     reconnectBackoff: [500, 1000, 2000],
     heartbeatInterval: 30000
   },
   FALLBACK: {
-    enableBroadcastChannel: true
-  }
-}
-
-  FALLBACK: {
+    enableBroadcastChannel: true,
     enableP2P: true,
-    enableBroadcastChannel: true, 
     enableLocalStorage: true,
     p2pSignalingTimeout: 15000,
     fallbackReconnectInterval: 30000,
     maxFallbackDuration: 300000, // 5 minutes
     enableMockMode: process.env.NODE_ENV === 'development' // Enable mock mode in development
   },
-
   WEBRTC: {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -35,7 +29,6 @@ export const STREAM_CONFIG = {
     bundlePolicy: 'balanced' as RTCBundlePolicy,
     rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy
   },
-
   MEDIA: {
     video: {
       width: { ideal: 1280 },
@@ -48,7 +41,6 @@ export const STREAM_CONFIG = {
       autoGainControl: true
     }
   },
-
   DEBUG: process.env.NODE_ENV === 'development'
 }
 
