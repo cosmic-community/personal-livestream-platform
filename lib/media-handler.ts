@@ -225,6 +225,7 @@ class MediaHandler {
   }
 
   setRemoteStream(stream: MediaStream | undefined): void {
+    // Now properly handles undefined values
     this.remoteStream = stream
   }
 
