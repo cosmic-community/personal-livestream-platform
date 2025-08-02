@@ -33,20 +33,28 @@ interface SignalPayload {
   signalData: any
 }
 
-// Mock socket for fallback mode
+// Enhanced Mock socket for fallback mode
 class MockSocket {
   public id: string = 'mock-' + Math.random().toString(36).substr(2, 9)
   public connected: boolean = true
   private eventHandlers: Map<string, Function[]> = new Map()
+  private heartbeatInterval: NodeJS.Timeout | null = null
 
   constructor() {
     log('info', '🔧 Mock socket initialized for fallback mode')
+    this.startHeartbeat()
+  }
+
+  private startHeartbeat(): void {
+    this.heartbeatInterval = setInterval(() => {
+      this.trigger('heartbeat-ack', { timestamp: Date.now() })
+    }, 30000)
   }
 
   emit(event: string, data?: any): void {
-    log('info', `📤 Mock emit: ${event}`, data) // CHANGED from 'debug' to 'info'
+    log('info', `📤 Mock emit: ${event}`, data)
     
-    // Simulate some responses for development
+    // Simulate responses for development
     setTimeout(() => {
       switch (event) {
         case 'start-broadcast':
@@ -56,8 +64,14 @@ class MockSocket {
             timestamp: new Date().toISOString()
           })
           break
-        case 'join-room':
-          this.trigger('room-joined', { roomId: data?.roomId })
+        case 'join-stream':
+          this.trigger('stream-joined', { 
+            sessionId: data?.sessionId || 'mock-session',
+            viewerCount: 1
+          })
+          break
+        case 'heartbeat':
+          this.trigger('heartbeat-ack', { timestamp: Date.now() })
           break
       }
     }, 100)
@@ -98,6 +112,10 @@ class MockSocket {
 
   disconnect(): void {
     this.connected = false
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+      this.heartbeatInterval = null
+    }
     log('info', '🔧 Mock socket disconnected')
   }
 
@@ -121,30 +139,29 @@ class SocketManager {
   private maxReconnectAttempts = STREAM_CONFIG.CONNECTION.maxRetries
   private isConnecting = false
   private connectionTimeout: NodeJS.Timeout | null = null
-  private heartbeatInterval: NodeJS.Timeout | null = null
   private fallbackMode = false
   private eventCallbacks = new Map<string, ((...args: any[]) => void)[]>()
-  private triggerEvent: ((event: string, data?: any) => void) | null = null
-  private fallbackInterval: NodeJS.Timeout | null = null
   private currentUrlIndex = 0
   private connectionPromise: Promise<Socket | MockSocket> | null = null
   private urlAttempts = 0
   private broadcastChannel: BroadcastChannel | null = null
   private isDestroyed = false
+  private heartbeatInterval: NodeJS.Timeout | null = null
+  private connectionRetryTimeout: NodeJS.Timeout | null = null
 
   constructor() {
     this.setupBroadcastChannel()
   }
 
   private getSocketUrls(): string[] {
-    const urls = STREAM_CONFIG.SERVER_URLS
+    const urls = STREAM_CONFIG.SERVER_URLS.filter(url => url && url.trim().length > 0)
     
-    // If no URLs configured, use fallback mode immediately
     if (urls.length === 0) {
       log('warn', '⚠️ No WebSocket server URLs configured, enabling fallback mode')
       return []
     }
     
+    log('info', `🔍 Available WebSocket URLs: ${urls.join(', ')}`)
     return urls
   }
 
@@ -164,14 +181,32 @@ class SocketManager {
   }
 
   connect(): Socket | MockSocket {
-    if (this.isDestroyed) throw new Error('Socket manager destroyed')
-    if (this.socket?.connected) return this.socket
-    if (this.connectionPromise) return this.socket as Socket | MockSocket
+    if (this.isDestroyed) {
+      log('error', '❌ Cannot connect - socket manager destroyed')
+      throw new Error('Socket manager destroyed')
+    }
+    
+    if (this.socket?.connected && !this.fallbackMode) {
+      log('info', '✅ Already connected to WebSocket server')
+      return this.socket
+    }
+    
+    if (this.connectionPromise) {
+      log('info', '⏳ Connection already in progress')
+      return this.socket as Socket | MockSocket
+    }
     
     // Check if we should go straight to fallback mode
     const urls = this.getSocketUrls()
-    if (urls.length === 0 || (this.currentUrlIndex >= urls.length && this.urlAttempts >= STREAM_CONFIG.CONNECTION.maxUrlAttempts)) {
-      log('info', '🔧 No servers available, entering fallback mode immediately')
+    if (urls.length === 0) {
+      log('info', '🔧 No servers configured, entering fallback mode immediately')
+      this.enableFallbackMode()
+      return this.socket as MockSocket
+    }
+    
+    // Check if we've exhausted all connection attempts
+    if (this.currentUrlIndex >= urls.length && this.urlAttempts >= STREAM_CONFIG.CONNECTION.maxUrlAttempts) {
+      log('warn', '🔧 All connection attempts exhausted, entering fallback mode')
       this.enableFallbackMode()
       return this.socket as MockSocket
     }
@@ -181,37 +216,41 @@ class SocketManager {
   }
 
   private async establishConnection(): Promise<Socket | MockSocket> {
-    if (this.isConnecting || this.isDestroyed) return this.socket as Socket | MockSocket
+    if (this.isConnecting || this.isDestroyed) {
+      return this.socket as Socket | MockSocket
+    }
+    
     this.isConnecting = true
-
+    
     try {
       const urls = this.getSocketUrls()
-      
-      // Check if we've exhausted all URLs
-      if (this.currentUrlIndex >= urls.length && this.urlAttempts >= STREAM_CONFIG.CONNECTION.maxUrlAttempts) {
-        log('warn', '🔧 All URLs exhausted, entering fallback mode')
-        this.enableFallbackMode()
-        return this.socket as MockSocket
-      }
-
       const url = urls[this.currentUrlIndex]
+      
       if (!url) {
         log('warn', '🔧 No URL available, entering fallback mode')
         this.enableFallbackMode()
         return this.socket as MockSocket
       }
 
-      log('info', `🔌 Attempting connection to ${url} (attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`)
+      log('info', `🔌 Attempting WebSocket connection to ${url} (attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts}, URL attempt ${this.urlAttempts + 1}/${STREAM_CONFIG.CONNECTION.maxUrlAttempts})`)
 
-      this.socket?.removeAllListeners()
-      if (this.socket && 'disconnect' in this.socket) {
-        this.socket.disconnect()
+      // Clean up existing socket
+      if (this.socket) {
+        this.socket.removeAllListeners()
+        if ('disconnect' in this.socket) {
+          this.socket.disconnect()
+        }
       }
 
-      // Create real socket connection
+      // Create new socket with enhanced configuration
       this.socket = io(url, { 
         ...STREAM_CONFIG.CONNECTION,
-        autoConnect: true
+        autoConnect: false, // Manual connection for better control
+        forceNew: true, // Force new connection
+        multiplex: false, // Disable multiplexing for simplicity
+        transports: ['websocket'], // Only WebSocket transport
+        upgrade: false, // Don't upgrade from polling
+        timeout: STREAM_CONFIG.CONNECTION.timeout
       })
 
       return new Promise((resolve, reject) => {
@@ -220,11 +259,12 @@ class SocketManager {
           return reject(new Error('Socket init failed'))
         }
 
+        // Set connection timeout
         this.connectionTimeout = setTimeout(() => {
           log('warn', `⏰ Connection timeout to ${url}`)
           this.handleConnectionFailure('Connection timeout')
           reject(new Error('Connection timeout'))
-        }, STREAM_CONFIG.CONNECTION.timeout + 2000)
+        }, STREAM_CONFIG.CONNECTION.timeout)
 
         const cleanUp = () => {
           this.isConnecting = false
@@ -235,31 +275,48 @@ class SocketManager {
           }
         }
 
+        // Success handler
         this.socket.once('connect', () => {
           cleanUp()
-          log('info', '✅ Socket connected:', this.socket?.id)
+          log('info', `✅ WebSocket connected successfully: ${this.socket?.id}`)
           this.reconnectAttempts = 0
           this.urlAttempts = 0
           this.fallbackMode = false
           this.setupSocketEventHandlers()
+          this.startHeartbeat()
           resolve(this.socket as Socket)
         })
 
+        // Error handler
         this.socket.once('connect_error', err => {
           cleanUp()
-          log('error', `❌ Connection error to ${url}:`, err.message)
+          log('error', `❌ WebSocket connection error to ${url}:`, err.message)
           this.handleConnectionFailure(err.message)
           reject(err)
         })
 
+        // Disconnect handler
         this.socket.once('disconnect', reason => {
-          cleanUp()
-          log('warn', `🔌 Disconnected from ${url}:`, reason)
-          this.handleConnectionFailure(reason)
+          log('warn', `🔌 WebSocket disconnected from ${url}:`, reason)
+          if (!this.fallbackMode && reason !== 'io client disconnect') {
+            this.handleConnectionFailure(reason)
+          }
         })
+
+        // Start the connection
+        try {
+          this.socket.connect()
+        } catch (error) {
+          cleanUp()
+          log('error', '❌ Failed to initiate connection:', error)
+          this.handleConnectionFailure('Connection initiation failed')
+          reject(error)
+        }
       })
 
     } catch (err) {
+      this.isConnecting = false
+      this.connectionPromise = null
       log('error', '❌ Error in establishConnection:', err)
       this.handleConnectionFailure('Connection establishment error')
       throw err
@@ -273,13 +330,19 @@ class SocketManager {
     const urls = this.getSocketUrls()
     log('warn', `⚠️ Connection failed: ${reason} (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
     
+    // Clear any existing retry timeout
+    if (this.connectionRetryTimeout) {
+      clearTimeout(this.connectionRetryTimeout)
+      this.connectionRetryTimeout = null
+    }
+    
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       this.currentUrlIndex++
       this.reconnectAttempts = 0
-      this.urlAttempts++
       
       if (this.currentUrlIndex >= urls.length) {
         this.currentUrlIndex = 0
+        this.urlAttempts++
         
         if (this.urlAttempts >= STREAM_CONFIG.CONNECTION.maxUrlAttempts) {
           log('warn', '🔧 All connection attempts failed, enabling fallback mode')
@@ -288,24 +351,25 @@ class SocketManager {
         }
       }
       
-      // Try next URL after a short delay
-      setTimeout(() => {
+      // Try next URL after a delay
+      this.connectionRetryTimeout = setTimeout(() => {
         if (!this.isDestroyed) {
+          log('info', '🔄 Trying next WebSocket server...')
           this.connect()
         }
       }, STREAM_CONFIG.CONNECTION.reconnectBackoff[0] || 1000)
     } else {
       // Retry same URL with backoff
       const delay = STREAM_CONFIG.CONNECTION.reconnectBackoff[Math.min(this.reconnectAttempts - 1, STREAM_CONFIG.CONNECTION.reconnectBackoff.length - 1)] || 1000
-      setTimeout(() => {
+      this.connectionRetryTimeout = setTimeout(() => {
         if (!this.isDestroyed) {
+          log('info', `🔄 Retrying WebSocket connection in ${delay}ms...`)
           this.connect()
         }
       }, delay)
     }
   }
 
-  /** Enable fallback mode with mock socket */
   private enableFallbackMode(): void {
     this.fallbackMode = true
     this.isConnecting = false
@@ -329,31 +393,48 @@ class SocketManager {
     const sock = this.socket
     if (!sock) return
 
+    // Heartbeat/ping-pong
     sock.on('ping', () => {
       if (this.isDestroyed) return
       sock.emit('pong', { timestamp: Date.now() })
     })
 
-    sock.on('join-room', (payload: JoinRoomPayload) => {
-      log('info', '🚪 Room joined:', payload)
+    // Handle incoming messages
+    sock.on('message', (data) => {
+      log('info', '📨 Received message:', data)
     })
 
-    sock.on('signal', (payload: SignalPayload) => {
-      log('info', '📡 Signal received:', payload)
+    // Stream events
+    sock.on('stream-started', (data: StreamStartedEvent) => {
+      log('info', '🎬 Stream started:', data)
     })
 
+    sock.on('stream-ended', (data: StreamEndedEvent) => {
+      log('info', '🛑 Stream ended:', data)
+    })
+
+    sock.on('stream-joined', (data) => {
+      log('info', '👤 Joined stream:', data)
+    })
+
+    sock.on('viewer-count', (data) => {
+      log('info', '👥 Viewer count update:', data)
+    })
+
+    // Connection events
     sock.on('disconnect', (reason: string) => {
       if (!this.fallbackMode) {
         log('warn', '🔌 Socket disconnected:', reason)
+        this.stopHeartbeat()
         if (!this.isDestroyed && reason !== 'io client disconnect') {
-          // Attempt to reconnect unless explicitly disconnected
-          setTimeout(() => {
+          // Auto-reconnect unless explicitly disconnected
+          this.connectionRetryTimeout = setTimeout(() => {
             if (!this.isDestroyed) {
               this.currentUrlIndex = 0
               this.reconnectAttempts = 0
               this.connect()
             }
-          }, 1000)
+          }, 2000)
         }
       }
     })
@@ -367,34 +448,37 @@ class SocketManager {
     log('info', '✅ Socket event handlers setup complete')
   }
 
-  // Core emit methods
-  joinRoom(roomId: string, userId: string, streamId: string): void {
-    if (this.socket) {
-      this.socket.emit('join-room', { roomId, userId, streamId })
-    } else {
-      log('warn', '⚠️ Cannot join room - no socket connection')
+  private startHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+    }
+    
+    this.heartbeatInterval = setInterval(() => {
+      if (this.socket?.connected && !this.fallbackMode) {
+        this.socket.emit('heartbeat', { timestamp: Date.now() })
+      }
+    }, 30000) // Every 30 seconds
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+      this.heartbeatInterval = null
     }
   }
 
-  sendSignal(toId: string, fromId: string, signalData: any): void {
-    if (this.socket) {
-      this.socket.emit('signal', { toId, fromId, signalData })
-    } else {
-      log('warn', '⚠️ Cannot send signal - no socket connection')
-    }
-  }
+  // Public API methods
 
-  // Public convenience listeners
   on(event: string, callback: (...args: any[]) => void): void {
     if (this.socket && !this.isDestroyed) {
       this.socket.on(event, callback)
     } else {
-      log('info', `📝 Queuing event listener for ${event}`) // CHANGED from 'debug' to 'info'
       // Queue the callback for when connection is established
       if (!this.eventCallbacks.has(event)) {
         this.eventCallbacks.set(event, [])
       }
       this.eventCallbacks.get(event)!.push(callback)
+      log('info', `📝 Queued event listener for ${event}`)
     }
   }
 
@@ -414,6 +498,75 @@ class SocketManager {
     }
   }
 
+  emit(event: string, data?: any): void {
+    if (this.socket && !this.isDestroyed) {
+      this.socket.emit(event, data)
+      log('info', `📤 Emitted event: ${event}`, data)
+    } else {
+      log('warn', `⚠️ Cannot emit ${event} - no socket connection`)
+    }
+  }
+
+  // Streaming methods
+  startBroadcast(streamType: StreamType): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (this.isDestroyed) return reject(new Error('Socket manager destroyed'))
+      
+      // Ensure connection first
+      try {
+        this.connect()
+      } catch (error) {
+        return reject(new Error('Failed to establish connection'))
+      }
+
+      const timeout = setTimeout(() => {
+        reject(new Error('Stream start timeout'))
+      }, 10000) // Longer timeout
+
+      this.socket!.once('stream-started', (data: StreamStartedEvent) => {
+        clearTimeout(timeout)
+        log('info', '✅ Broadcast started successfully:', data)
+        resolve()
+      })
+
+      this.socket!.once('stream-error', (err: StreamErrorEvent) => {
+        clearTimeout(timeout)
+        log('error', '❌ Broadcast start failed:', err)
+        reject(new Error(err.message))
+      })
+
+      this.socket!.emit('start-broadcast', {
+        streamType,
+        timestamp: new Date().toISOString(),
+        clientId: this.socket!.id,
+        fallbackMode: this.fallbackMode
+      })
+    })
+  }
+
+  stopBroadcast(): void {
+    if (this.socket) {
+      this.socket.emit('stop-broadcast', { 
+        timestamp: new Date().toISOString(), 
+        clientId: this.socket.id, 
+        fallbackMode: this.fallbackMode 
+      })
+      log('info', '🛑 Broadcast stop signal sent')
+    }
+  }
+
+  joinStream(sessionId?: string): void {
+    if (this.socket) {
+      this.socket.emit('join-stream', { 
+        sessionId,
+        timestamp: new Date().toISOString(),
+        clientId: this.socket.id
+      })
+      log('info', `🚪 Joining stream: ${sessionId || 'any available'}`)
+    }
+  }
+
+  // Connection management
   forceReconnect(): void {
     if (this.isDestroyed) return
     
@@ -465,7 +618,44 @@ class SocketManager {
     }
   }
 
-  // High-level event helpers
+  disconnect(): void {
+    this.isDestroyed = true
+    
+    // Clear timeouts
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout)
+      this.connectionTimeout = null
+    }
+    
+    if (this.connectionRetryTimeout) {
+      clearTimeout(this.connectionRetryTimeout)
+      this.connectionRetryTimeout = null
+    }
+    
+    this.stopHeartbeat()
+    
+    if (this.socket) {
+      this.socket.removeAllListeners()
+      if ('disconnect' in this.socket) {
+        this.socket.disconnect()
+      }
+    }
+    this.socket = null
+    this.eventCallbacks.clear()
+    this.broadcastChannel?.close()
+    
+    log('info', '🧹 Socket manager disconnected and cleaned up')
+  }
+
+  isConnected(): boolean {
+    return (this.socket?.connected || this.fallbackMode) && !this.isDestroyed
+  }
+
+  getSocketId(): string | undefined {
+    return this.socket?.id
+  }
+
+  // Event listener convenience methods
   onStreamStarted(callback: (data: StreamStartedEvent) => void): void {
     this.on('stream-started', callback)
   }
@@ -482,6 +672,19 @@ class SocketManager {
     this.on('viewer-count', callback)
   }
 
+  // WebRTC signaling
+  sendOffer(offer: RTCSessionDescriptionInit, targetId?: string): void {
+    this.emit('stream-offer', { offer, targetId })
+  }
+
+  sendAnswer(answer: RTCSessionDescriptionInit, targetId: string): void {
+    this.emit('stream-answer', { answer, targetId })
+  }
+
+  sendIceCandidate(candidate: RTCIceCandidateInit, targetId?: string): void {
+    this.emit('ice-candidate', { candidate, targetId })
+  }
+
   onStreamOffer(callback: (data: any) => void): void {
     this.on('stream-offer', callback)
   }
@@ -492,114 +695,6 @@ class SocketManager {
 
   onIceCandidate(callback: (data: any) => void): void {
     this.on('ice-candidate', callback)
-  }
-
-  // Broadcast control
-  startBroadcast(streamType: StreamType): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (this.isDestroyed) return reject(new Error('Socket manager destroyed'))
-      
-      if (!this.socket) {
-        // Try to connect first
-        try {
-          this.connect()
-        } catch (error) {
-          return reject(new Error('Failed to establish connection'))
-        }
-      }
-
-      const timeout = setTimeout(() => {
-        reject(new Error('Stream start timeout'))
-      }, 6000)
-
-      this.socket!.once('stream-started', (data: StreamStartedEvent) => {
-        clearTimeout(timeout)
-        resolve()
-      })
-
-      this.socket!.once('stream-error', (err: StreamErrorEvent) => {
-        clearTimeout(timeout)
-        reject(new Error(err.message))
-      })
-
-      this.socket!.emit('start-broadcast', {
-        streamType,
-        timestamp: new Date().toISOString(),
-        clientId: this.socket!.id,
-        fallbackMode: this.fallbackMode
-      })
-    })
-  }
-
-  stopBroadcast(): void {
-    if (this.socket) {
-      this.socket.emit('stop-broadcast', { 
-        timestamp: new Date().toISOString(), 
-        clientId: this.socket.id, 
-        fallbackMode: this.fallbackMode 
-      })
-    }
-  }
-
-  // Signaling
-  sendOffer(offer: RTCSessionDescriptionInit, targetId?: string): void {
-    if (this.socket) {
-      this.socket.emit('stream-offer', { offer, targetId })
-    } else {
-      log('warn', '⚠️ Cannot send offer - no socket connection')
-    }
-  }
-
-  sendAnswer(answer: RTCSessionDescriptionInit, targetId: string): void {
-    if (this.socket) {
-      this.socket.emit('stream-answer', { answer, targetId })
-    } else {
-      log('warn', '⚠️ Cannot send answer - no socket connection')
-    }
-  }
-
-  sendIceCandidate(candidate: RTCIceCandidateInit, targetId?: string): void {
-    if (this.socket) {
-      this.socket.emit('ice-candidate', { candidate, targetId })
-    } else {
-      log('warn', '⚠️ Cannot send ICE candidate - no socket connection')
-    }
-  }
-
-  disconnect(): void {
-    this.isDestroyed = true
-    if (this.socket) {
-      this.socket.removeAllListeners()
-      if ('disconnect' in this.socket) {
-        this.socket.disconnect()
-      }
-    }
-    this.socket = null
-    this.eventCallbacks.clear()
-    this.broadcastChannel?.close()
-    
-    if (this.connectionTimeout) {
-      clearTimeout(this.connectionTimeout)
-      this.connectionTimeout = null
-    }
-    
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval)
-      this.heartbeatInterval = null
-    }
-    
-    if (this.fallbackInterval) {
-      clearInterval(this.fallbackInterval)
-      this.fallbackInterval = null
-    }
-  }
-
-  isConnected(): boolean {
-    return (this.socket?.connected || this.fallbackMode) && !this.isDestroyed
-  }
-
-  getSocketId(): string | undefined {
-    return this.socket?.id
   }
 }
 

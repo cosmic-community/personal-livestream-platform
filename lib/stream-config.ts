@@ -1,157 +1,158 @@
 export const STREAM_CONFIG = {
-  // WebRTC Configuration
+  // WebSocket server URLs - updated for better connection reliability
+  SERVER_URLS: [
+    'ws://localhost:3001',
+    'ws://127.0.0.1:3001',
+    ...(typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
+      ? [`ws://${window.location.hostname}:3001`] 
+      : []
+    )
+  ],
+  
+  CONNECTION: {
+    timeout: 8000, // Increased timeout for better reliability
+    reconnectBackoff: [1000, 2000, 4000, 8000, 16000], // Progressive backoff
+    maxRetries: 5,
+    maxUrlAttempts: 3,
+    healthCheckInterval: 15000,
+    forceWebSockets: true, // Force WebSocket transport
+    transports: ['websocket'], // Only use WebSocket transport
+    upgrade: true,
+    rememberUpgrade: true
+  },
+  
   WEBRTC: {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' }
     ],
-    iceCandidatePoolSize: 10,
-    bundlePolicy: 'max-bundle' as RTCBundlePolicy,
-    rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,
+    configuration: {
+      iceTransportPolicy: 'all',
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require',
+      iceCandidatePoolSize: 10
+    }
   },
-
-  // Server URLs for fallback
-  SERVER_URLS: [
-    'ws://localhost:3001',
-    'wss://your-websocket-server.com',
-  ],
-
-  // Connection settings
-  CONNECTION: {
-    timeout: 10000,
-    maxRetries: 5,
-    maxUrlAttempts: 3,
-    reconnectBackoff: [1000, 2000, 5000, 10000, 15000],
-    heartbeatInterval: 30000,
-    healthCheckInterval: 15000,
-  },
-
-  // Stream quality settings
-  QUALITY: {
-    video: {
-      low: { width: 640, height: 480, frameRate: 15, bitrate: 500000 },
-      medium: { width: 1280, height: 720, frameRate: 30, bitrate: 1500000 },
-      high: { width: 1920, height: 1080, frameRate: 30, bitrate: 3000000 },
-    },
-    audio: {
-      bitrate: 128000,
-      sampleRate: 44100,
-    },
-  },
-
-  // Media constraints
-  CONSTRAINTS: {
-    video: {
-      width: { ideal: 1280, max: 1920, min: 640 },
-      height: { ideal: 720, max: 1080, min: 480 },
-      frameRate: { ideal: 30, max: 60, min: 15 },
-    },
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  },
-
-  // Fallback configuration - ADDED to fix TS2339 error
+  
   FALLBACK: {
     enableBroadcastChannel: true,
-    mockSocketDelay: 100,
     enableLocalStorage: true,
+    enableWebRTCDirect: true,
+    fallbackTimeout: 10000,
+    maxFallbackAttempts: 3
   },
-}
-
-// Export getWebRTCConfig function - ADDED to fix TS2305 error
-export const getWebRTCConfig = (): RTCConfiguration => {
-  return STREAM_CONFIG.WEBRTC
-}
-
-// Logging utility - UPDATED to fix TS2345 errors by removing 'debug' level
-export const log = (level: 'info' | 'warn' | 'error', message: string, data?: any) => {
-  const timestamp = new Date().toISOString()
-  const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`
   
-  if (data) {
-    console[level](logMessage, data)
-  } else {
-    console[level](logMessage)
+  LOGGING: {
+    level: 'info', // Changed from debug to info for better visibility
+    enableConsole: true,
+    enableRemote: false,
+    maxLogEntries: 100
   }
 }
 
-// Error creation utility
-export const createStreamError = (code: string, message: string, details?: any) => {
+// Enhanced logging function with better error tracking
+export function log(level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: any): void {
+  if (!STREAM_CONFIG.LOGGING.enableConsole) return
+  
+  const timestamp = new Date().toISOString()
+  const prefix = `[${timestamp}] [${level.toUpperCase()}]`
+  
+  switch (level) {
+    case 'debug':
+      if (STREAM_CONFIG.LOGGING.level === 'debug') {
+        console.debug(prefix, message, data || '')
+      }
+      break
+    case 'info':
+      if (['debug', 'info'].includes(STREAM_CONFIG.LOGGING.level)) {
+        console.info(prefix, message, data || '')
+      }
+      break
+    case 'warn':
+      if (['debug', 'info', 'warn'].includes(STREAM_CONFIG.LOGGING.level)) {
+        console.warn(prefix, message, data || '')
+      }
+      break
+    case 'error':
+      console.error(prefix, message, data || '')
+      break
+  }
+}
+
+export function createStreamError(code: string, message: string, details?: any) {
   return {
     code,
     message,
     timestamp: new Date().toISOString(),
-    details,
-    browserInfo: {
-      userAgent: navigator.userAgent,
-      platform: navigator.platform,
-      language: navigator.language,
-    },
+    details
   }
 }
 
-// Test connection methods
-export const testAllConnectionMethods = async () => {
-  const methods = {
-    websocket: false,
-    webrtc: false,
-    broadcastChannel: false,
-    localStorage: false,
-  }
-
+// Test connection methods availability
+export async function testAllConnectionMethods(): Promise<Record<string, boolean>> {
+  const results: Record<string, boolean> = {}
+  
   // Test WebSocket
   try {
-    const testWs = new WebSocket('wss://echo.websocket.org')
-    methods.websocket = await new Promise((resolve) => {
-      const timeout = setTimeout(() => resolve(false), 3000)
-      testWs.onopen = () => {
-        clearTimeout(timeout)
-        testWs.close()
-        resolve(true)
-      }
-      testWs.onerror = () => {
-        clearTimeout(timeout)
-        resolve(false)
-      }
-    })
+    results.websocket = typeof WebSocket !== 'undefined'
   } catch {
-    methods.websocket = false
+    results.websocket = false
   }
-
+  
+  // Test BroadcastChannel
+  try {
+    results.broadcastChannel = typeof BroadcastChannel !== 'undefined'
+  } catch {
+    results.broadcastChannel = false
+  }
+  
+  // Test LocalStorage
+  try {
+    localStorage.setItem('test', 'test')
+    localStorage.removeItem('test')
+    results.localStorage = true
+  } catch {
+    results.localStorage = false
+  }
+  
   // Test WebRTC
   try {
     const pc = new RTCPeerConnection()
     pc.close()
-    methods.webrtc = true
+    results.webrtc = true
   } catch {
-    methods.webrtc = false
+    results.webrtc = false
   }
+  
+  log('info', '🔍 Connection methods tested:', results)
+  return results
+}
 
-  // Test BroadcastChannel
+// Network connectivity test
+export async function testNetworkConnectivity(): Promise<boolean> {
   try {
-    if ('BroadcastChannel' in window) {
-      const testChannel = new BroadcastChannel('test')
-      testChannel.close()
-      methods.broadcastChannel = true
-    }
+    const response = await fetch('https://www.google.com/favicon.ico', {
+      mode: 'no-cors',
+      cache: 'no-cache'
+    })
+    return true
   } catch {
-    methods.broadcastChannel = false
+    return false
   }
+}
 
-  // Test localStorage
+// Server health check
+export async function checkServerHealth(url: string): Promise<boolean> {
   try {
-    localStorage.setItem('test', 'test')
-    localStorage.removeItem('test')
-    methods.localStorage = true
+    const httpUrl = url.replace('ws://', 'http://').replace('wss://', 'https://')
+    const response = await fetch(`${httpUrl}/health`, {
+      method: 'GET',
+      timeout: 5000
+    })
+    return response.ok
   } catch {
-    methods.localStorage = false
+    return false
   }
-
-  return methods
 }
