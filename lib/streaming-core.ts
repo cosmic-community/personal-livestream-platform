@@ -289,10 +289,13 @@ export class StreamingCore {
         }
         this.streamState.screenEnabled = false
       } else {
-        // Enable screen share
+        // Enable screen share - Fixed: Add null check for screenStream
         const screenStream = await this.mediaHandler.getScreenStream()
+        if (!screenStream) {
+          throw new Error('Failed to get screen stream')
+        }
         // Add tracks to current stream if both exist
-        if (this.currentStream && screenStream) {
+        if (this.currentStream) {
           screenStream.getTracks().forEach(track => {
             if (this.currentStream) {
               this.currentStream.addTrack(track)
