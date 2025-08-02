@@ -160,6 +160,19 @@ class SocketManager {
     }
   }
 
+  /** Fallback to a mock socket when all real-URL attempts fail */
+  private enableFallbackMode(): void {
+    this.fallbackMode = true;
+    this.isConnecting = false;
+    this.connectionPromise = null;
+    if (this.socket) {
+      this.socket.removeAllListeners();
+      this.socket.disconnect();
+      this.socket = null;
+    }
+    log('info', '🔧 Fallback mode enabled');
+  }
+
   private setupSocketEventHandlers(): void {
     const sock = this.socket
     if (!sock) return
