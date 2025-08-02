@@ -145,7 +145,8 @@ class MediaHandler {
 
   /** Loads the cached remote stream (or null) */
   async startRemote(): Promise<void> {
-    this.remoteStream = await this.getRemoteStream()
+    const remoteStream = await this.getRemoteStream()
+    this.remoteStream = remoteStream
   }
 
   stopStream(stream?: MediaStream | null): void {
