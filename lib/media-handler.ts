@@ -18,6 +18,7 @@ class MediaHandler {
   private localStream: MediaStream | null = null
   private remoteStream: MediaStream | null = null
 
+  /** Returns which devices are available on this machine */
   async checkDeviceSupport(): Promise<MediaDeviceCapabilities> {
     if (!navigator.mediaDevices?.getUserMedia) {
       return {
@@ -28,7 +29,6 @@ class MediaHandler {
         microphoneDevices: []
       }
     }
-
     const devices = await navigator.mediaDevices.enumerateDevices()
     return {
       hasCamera: devices.some(d => d.kind === 'videoinput'),
@@ -39,22 +39,23 @@ class MediaHandler {
     }
   }
 
-  /** Returns the cached local stream, or null if none */
+  /** Returns the previously-acquired local stream, or null if none */
   async getCachedStream(): Promise<MediaStream | null> {
     return this.localStream
   }
 
-  /** Returns the cached remote stream, or null if none */
+  /** Returns the previously-acquired remote stream, or null if none */
   async getRemoteStream(): Promise<MediaStream | null> {
     return this.remoteStream
   }
 
+  /** Opens camera+mic with optional constraints */
   async getWebcamStream(constraints?: MediaConstraints): Promise<MediaStream> {
     const defaultConstraints: MediaStreamConstraints = {
       video: {
         width: { ideal: 1280, max: 1920, min: 640 },
-        height: { ideal: 720, max: 1080, min: 480 },
-        frameRate: { ideal: 30, max: 60, min: 15 }
+        height: { ideal: 720,  max: 1080, min: 480 },
+        frameRate: { ideal: 30,  max: 60,   min: 15 }
       },
       audio: {
         echoCancellation: true,
@@ -62,30 +63,29 @@ class MediaHandler {
         autoGainControl: true
       }
     }
-
     const finalConstraints = constraints
       ? {
-          video: constraints.video ?? defaultConstraints.video,
-          audio: constraints.audio ?? defaultConstraints.audio
+          video: constraints.video  ?? defaultConstraints.video,
+          audio: constraints.audio  ?? defaultConstraints.audio
         }
       : defaultConstraints
 
     const stream = await navigator.mediaDevices.getUserMedia(finalConstraints)
     this.webcamStream = stream
-    this.localStream = stream
+    this.localStream  = stream
     return stream
   }
 
+  /** Opens a screen‐share + (optional) audio */
   async getScreenStream(): Promise<MediaStream> {
     if (!navigator.mediaDevices.getDisplayMedia) {
       throw new Error('Screen sharing is not supported in this browser')
     }
-
     const stream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         width: { ideal: 1920, max: 3840, min: 1280 },
-        height: { ideal: 1080, max: 2160, min: 720 },
-        frameRate: { ideal: 30, max: 60, min: 15 }
+        height:{ ideal: 1080, max: 2160, min: 720 },
+        frameRate:{ ideal: 30,   max: 60,   min: 15 }
       },
       audio: {
         echoCancellation: false,
@@ -96,6 +96,7 @@ class MediaHandler {
     return stream
   }
 
+  /** Combines webcam + screen into one track‐merged stream */
   async getCombinedStream(
     includeWebcam: boolean = true,
     includeScreen: boolean = true
@@ -105,16 +106,15 @@ class MediaHandler {
     if (includeWebcam) {
       try {
         streams.push(await this.getWebcamStream())
-      } catch (err) {
-        console.warn('Webcam unavailable:', err)
+      } catch {
+        console.warn('Webcam unavailable')
       }
     }
-
     if (includeScreen) {
       try {
         streams.push(await this.getScreenStream())
-      } catch (err) {
-        console.warn('Screen unavailable:', err)
+      } catch {
+        console.warn('Screen share unavailable')
       }
     }
 
@@ -133,20 +133,19 @@ class MediaHandler {
     return combined
   }
 
+  /** Grabs a fresh local camera+mic stream */
   async startLocal(): Promise<void> {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true
+    })
     this.localStream = stream
   }
 
+  /** Pulls in an already‐cached remote stream */
   async startRemote(): Promise<void> {
-    // Fix: Handle the return type properly - getRemoteStream returns Promise<MediaStream | null>
     const stream = await this.getRemoteStream()
-    this.remoteStream = stream // This is already MediaStream | null, which matches the property type
-    
-    // If we need to ensure we have a stream, we should handle the null case:
-    if (!stream) {
-      throw new Error('No remote stream available')
-    }
+    this.remoteStream = stream
   }
 
   stopStream(stream?: MediaStream | null): void {
@@ -155,37 +154,33 @@ class MediaHandler {
 
     target.getTracks().forEach(t => t.stop())
     if (target === this.currentStream) this.currentStream = null
-    if (target === this.webcamStream) this.webcamStream = null
-    if (target === this.screenStream) this.screenStream = null
-    if (target === this.localStream) this.localStream = null
+    if (target === this.webcamStream)  this.webcamStream  = null
+    if (target === this.screenStream)  this.screenStream  = null
+    if (target === this.localStream)   this.localStream   = null
   }
 
   stopAllStreams(): void {
-    [this.currentStream, this.webcamStream, this.screenStream, this.localStream].forEach(s => {
-      if (s) this.stopStream(s)
-    })
+    [ this.currentStream, this.webcamStream, this.screenStream, this.localStream ]
+      .forEach(s => s && this.stopStream(s))
   }
 
   getCurrentStream(): MediaStream | null {
     return this.currentStream
   }
-
   getActiveWebcamStream(): MediaStream | null {
     return this.webcamStream
   }
-
   getActiveScreenStream(): MediaStream | null {
     return this.screenStream
   }
-
   getLocalStream(): MediaStream | null {
     return this.localStream
   }
-
   getRemoteStreamSync(): MediaStream | null {
     return this.remoteStream
   }
 
+  /** Replace the remote stream (or clear it by passing `null`) */
   setRemoteStream(stream: MediaStream | null): void {
     this.remoteStream = stream
   }
