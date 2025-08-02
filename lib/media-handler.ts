@@ -16,7 +16,8 @@ class MediaHandler {
   private webcamStream: MediaStream | null | undefined = null
   private screenStream: MediaStream | null | undefined = null
   private localStream: MediaStream | null | undefined = null
-  private remoteStream: MediaStream | undefined
+  // FIXED: Allow null as "no stream yet" - prevents undefined assignment errors
+  private remoteStream: MediaStream | null = null
 
   async checkDeviceSupport(): Promise<MediaDeviceCapabilities> {
     try {
@@ -58,6 +59,11 @@ class MediaHandler {
     return this.localStream ?? undefined
   }
 
+  async getRemoteStream(): Promise<MediaStream | undefined> {
+    // Placeholder method that might return undefined - simulates API that could return undefined
+    return this.remoteStream ?? undefined
+  }
+
   async getWebcamStream(constraints?: MediaConstraints): Promise<MediaStream> {
     try {
       const defaultConstraints: MediaStreamConstraints = {
@@ -83,7 +89,7 @@ class MediaHandler {
       this.webcamStream = stream
       this.localStream = stream
       
-      // Handle undefined-to-null coalescing for consistent state
+      // FIXED: Handle undefined-to-null coalescing for consistent state
       this.localStream = (await this.getCachedStream()) ?? null
       
       return stream
@@ -166,6 +172,19 @@ class MediaHandler {
     }
   }
 
+  async startLocal() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true
+    })
+    this.localStream = stream
+  }
+
+  async startRemote() {
+    // FIXED: Coalesce undefined into null to prevent type assignment errors
+    this.remoteStream = (await this.getRemoteStream()) ?? null
+  }
+
   stopStream(stream?: MediaStream): void {
     const targetStream = stream || this.currentStream
 
@@ -220,13 +239,19 @@ class MediaHandler {
     return this.localStream
   }
 
-  getRemoteStream(): MediaStream | undefined {
+  getRemoteStreamSync(): MediaStream | null {
     return this.remoteStream
   }
 
   setRemoteStream(stream: MediaStream | undefined): void {
-    // Now properly handles undefined values
-    this.remoteStream = stream
+    // FIXED: Coalesce undefined into null for consistent typing
+    this.remoteStream = stream ?? null
+  }
+
+  // Method to handle other potential undefined assignments
+  updateRemoteStream(maybeStream: MediaStream | undefined): void {
+    // FIXED: Use nullish coalescing to prevent undefined assignment
+    this.remoteStream = maybeStream ?? null
   }
 
   private getMediaErrorMessage(error: any): string {

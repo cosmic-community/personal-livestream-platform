@@ -283,6 +283,19 @@ class SocketManager {
       }
     })
 
+    // Handle server-side events with bundled parameters
+    this.socket.on('join-room', ({ roomId, userId, streamId }: JoinRoomPayload) => {
+      if (!this.isDestroyed) {
+        log('info', '🏠 Room joined:', { roomId, userId, streamId })
+      }
+    })
+
+    this.socket.on('signal', ({ toId, fromId, signalData }: SignalPayload) => {
+      if (!this.isDestroyed) {
+        log('info', '📡 Signal received:', { toId, fromId, signalData })
+      }
+    })
+
     // Handle server-side events
     this.socket.on('server-status', (status: any) => {
       if (!this.isDestroyed) {
