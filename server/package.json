@@ -1,28 +1,22 @@
 {
   "name": "livestream-server",
   "version": "1.0.0",
-  "description": "Simple WebSocket livestream server",
+  "description": "WebSocket server for personal livestream platform",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": ["websocket", "livestream", "realtime"],
+  "author": "",
+  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "ws": "^8.14.2",
-    "uuid": "^9.0.1",
-    "cors": "^2.8.5"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
-  },
-  "keywords": [
-    "websocket",
-    "livestream",
-    "webrtc",
-    "streaming"
-  ],
-  "author": "",
-  "license": "MIT"
+  }
 }
