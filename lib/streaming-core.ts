@@ -176,20 +176,35 @@ export class StreamingCore {
       
       switch (type) {
         case 'webcam':
-          stream = await this.mediaHandler.getWebcamStream()
+          // Fix: Add null check for webcam stream (line 179 in original)
+          const webcamStream = await this.mediaHandler.getWebcamStream()
+          if (!webcamStream) {
+            throw new Error('Failed to get webcam stream')
+          }
+          stream = webcamStream
           this.streamState.webcamEnabled = true
           this.streamState.screenEnabled = false
           break
           
         case 'screen':
-          stream = await this.mediaHandler.getScreenStream()
+          // Fix: Add null check for screen stream (line 185 in original)
+          const screenStream = await this.mediaHandler.getScreenStream()
+          if (!screenStream) {
+            throw new Error('Failed to get screen stream')
+          }
+          stream = screenStream
           this.streamState.webcamEnabled = false
           this.streamState.screenEnabled = true
           break
           
         case 'both':
         case 'combined':
-          stream = await this.mediaHandler.getCombinedStream(true, true)
+          // Fix: Add null check for combined stream (line 192 in original)
+          const combinedStream = await this.mediaHandler.getCombinedStream(true, true)
+          if (!combinedStream) {
+            throw new Error('Failed to get combined stream')
+          }
+          stream = combinedStream
           this.streamState.webcamEnabled = true
           this.streamState.screenEnabled = true
           break
@@ -253,8 +268,11 @@ export class StreamingCore {
       } else {
         // Enable webcam
         const webcamStream = await this.mediaHandler.getWebcamStream()
+        if (!webcamStream) {
+          throw new Error('Failed to get webcam stream')
+        }
         // Add tracks to current stream if both exist
-        if (this.currentStream && webcamStream) {
+        if (this.currentStream) {
           webcamStream.getTracks().forEach(track => {
             if (this.currentStream) {
               this.currentStream.addTrack(track)
