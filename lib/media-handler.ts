@@ -140,7 +140,8 @@ class MediaHandler {
 
   async startRemote(): Promise<void> {
     const stream = await this.getRemoteStream()
-    this.remoteStream = stream
+    // Fix: Explicitly handle the null case and assign properly
+    this.remoteStream = stream ?? null
   }
 
   stopStream(stream?: MediaStream | null): void {
