@@ -180,7 +180,7 @@ class SocketManager {
     // ... other on(...) handlers ...
   }
 
-  // Public API
+  // Core emit methods
   joinRoom(roomId: string, userId: string, streamId: string): void {
     this.socket?.emit('join-room', { roomId, userId, streamId })
   }
@@ -189,11 +189,91 @@ class SocketManager {
     this.socket?.emit('signal', { toId, fromId, signalData })
   }
 
+  // Public convenience listeners
+  on(event: string, callback: (...args: any[]) => void): void {
+    if (this.socket && !this.isDestroyed) {
+      this.socket.on(event, callback)
+    }
+  }
+
+  off(event: string, callback?: (...args: any[]) => void): void {
+    if (this.socket && !this.isDestroyed) {
+      if (callback) this.socket.off(event, callback)
+      else this.socket.off(event)
+    }
+  }
+
+  forceReconnect(): void {
+    if (this.isDestroyed) return
+    this.disconnect()
+    this.isDestroyed = false
+    this.setupBroadcastChannel()
+    setTimeout(() => {
+      this.currentUrlIndex = 0
+      this.urlAttempts = 0
+      this.reconnectAttempts = 0
+      this.connect()
+    }, 1000)
+  }
+
+  isFallbackMode(): boolean {
+    return this.fallbackMode && !this.isDestroyed
+  }
+
+  getConnectionState(): string {
+    if (this.isDestroyed) return 'destroyed'
+    if (!this.socket) return 'disconnected'
+    if (this.fallbackMode) return 'fallback'
+    if (this.isConnecting) return 'connecting'
+    if (this.socket.connected) return 'connected'
+    return 'disconnected'
+  }
+
+  getConnectionHealth(): { connected: boolean; fallbackMode: boolean; reconnectAttempts: number; currentUrl: string; socketId?: string } {
+    const urls = this.getSocketUrls()
+    return {
+      connected: this.isConnected(),
+      fallbackMode: this.fallbackMode,
+      reconnectAttempts: this.reconnectAttempts,
+      currentUrl: urls[this.currentUrlIndex] || 'none',
+      socketId: this.socket?.id
+    }
+  }
+
+  // High-level event helpers
+  onStreamStarted(callback: (data: StreamStartedEvent) => void): void {
+    this.on('stream-started', callback)
+  }
+
+  onStreamEnded(callback: (data: StreamEndedEvent) => void): void {
+    this.on('stream-ended', callback)
+  }
+
+  onStreamError(callback: (error: StreamErrorEvent) => void): void {
+    this.on('stream-error', callback)
+  }
+
+  onViewerCount(callback: (count: number) => void): void {
+    this.on('viewer-count', callback)
+  }
+
+  onStreamOffer(callback: (data: any) => void): void {
+    this.on('stream-offer', callback)
+  }
+
+  onStreamAnswer(callback: (data: any) => void): void {
+    this.on('stream-answer', callback)
+  }
+
+  onIceCandidate(callback: (data: any) => void): void {
+    this.on('ice-candidate', callback)
+  }
+
+  // Broadcast control
   startBroadcast(streamType: StreamType): Promise<void> {
     return new Promise((resolve, reject) => {
       if (this.isDestroyed) return reject(new Error('Destroyed'))
       if (!this.socket || !this.socket.connected) return reject(new Error('Not connected'))
-
       const timeout = setTimeout(() => reject(new Error('Stream start timeout')), 6000)
       this.socket.once('stream-started', (data: StreamStartedEvent) => {
         clearTimeout(timeout)
@@ -203,7 +283,6 @@ class SocketManager {
         clearTimeout(timeout)
         reject(new Error(err.message))
       })
-
       this.socket.emit('start-broadcast', {
         streamType,
         timestamp: new Date().toISOString(),
@@ -217,6 +296,7 @@ class SocketManager {
     this.socket?.emit('stop-broadcast', { timestamp: new Date().toISOString(), clientId: this.socket?.id, fallbackMode: this.fallbackMode })
   }
 
+  // Signaling
   sendOffer(offer: RTCSessionDescriptionInit, targetId?: string): void {
     this.socket?.emit('stream-offer', { offer, targetId })
   }
