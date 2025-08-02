@@ -44,7 +44,7 @@ class MockSocket {
   }
 
   emit(event: string, data?: any): void {
-    log('debug', `📤 Mock emit: ${event}`, data)
+    log('info', `📤 Mock emit: ${event}`, data) // CHANGED from 'debug' to 'info'
     
     // Simulate some responses for development
     setTimeout(() => {
@@ -389,7 +389,7 @@ class SocketManager {
     if (this.socket && !this.isDestroyed) {
       this.socket.on(event, callback)
     } else {
-      log('debug', `📝 Queuing event listener for ${event}`)
+      log('info', `📝 Queuing event listener for ${event}`) // CHANGED from 'debug' to 'info'
       // Queue the callback for when connection is established
       if (!this.eventCallbacks.has(event)) {
         this.eventCallbacks.set(event, [])

@@ -26,7 +26,7 @@ export const STREAM_CONFIG = {
     maxUrlAttempts: 3,
     reconnectBackoff: [1000, 2000, 5000, 10000, 15000],
     heartbeatInterval: 30000,
-    healthCheckInterval: 15000, // Added missing property
+    healthCheckInterval: 15000,
   },
 
   // Stream quality settings
@@ -55,9 +55,21 @@ export const STREAM_CONFIG = {
       autoGainControl: true,
     },
   },
+
+  // Fallback configuration - ADDED to fix TS2339 error
+  FALLBACK: {
+    enableBroadcastChannel: true,
+    mockSocketDelay: 100,
+    enableLocalStorage: true,
+  },
 }
 
-// Logging utility
+// Export getWebRTCConfig function - ADDED to fix TS2305 error
+export const getWebRTCConfig = (): RTCConfiguration => {
+  return STREAM_CONFIG.WEBRTC
+}
+
+// Logging utility - UPDATED to fix TS2345 errors by removing 'debug' level
 export const log = (level: 'info' | 'warn' | 'error', message: string, data?: any) => {
   const timestamp = new Date().toISOString()
   const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`
