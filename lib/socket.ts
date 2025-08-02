@@ -687,7 +687,7 @@ class SocketManager {
     if (this.isDestroyed) return
     
     if (this.socket?.connected || this.fallbackMode) {
-      // FIXED: Using standard emit with 2 parameters only (event, data) - removed extra arguments
+      // FIXED: Using standard Socket.IO emit with 2 parameters only (event, data)
       this.socket?.emit('stream-offer', { offer, targetId })
     }
   }
@@ -696,7 +696,7 @@ class SocketManager {
     if (this.isDestroyed) return
     
     if (this.socket?.connected || this.fallbackMode) {
-      // FIXED: Using standard emit with 2 parameters only (event, data) - removed extra arguments
+      // FIXED: Using standard Socket.IO emit with 2 parameters only (event, data)
       this.socket?.emit('stream-answer', { answer, targetId })
     }
   }
