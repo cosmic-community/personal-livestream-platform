@@ -23,7 +23,8 @@ export const STREAM_CONFIG = {
     rememberUpgrade: true,
     forceNew: false,
     autoConnect: false, // We'll handle connection manually
-    withCredentials: false
+    withCredentials: false,
+    healthCheckInterval: 30000 // 30 seconds - health check interval
   },
 
   FALLBACK: {
@@ -84,4 +85,93 @@ export const log = (level: LogLevel, message: string, ...args: any[]) => {
     default:
       console.log(prefix, message, ...args)
   }
+}
+
+// Export WebRTC configuration getter
+export const getWebRTCConfig = (): RTCConfiguration => {
+  return {
+    iceServers: STREAM_CONFIG.WEBRTC.iceServers,
+    iceCandidatePoolSize: STREAM_CONFIG.WEBRTC.iceCandidatePoolSize,
+    bundlePolicy: STREAM_CONFIG.WEBRTC.bundlePolicy,
+    rtcpMuxPolicy: STREAM_CONFIG.WEBRTC.rtcpMuxPolicy
+  }
+}
+
+// Create stream error helper function
+export const createStreamError = (message: string, code?: string, details?: any): Error => {
+  const error = new Error(message)
+  if (code) {
+    (error as any).code = code
+  }
+  if (details) {
+    (error as any).details = details
+  }
+  return error
+}
+
+// Connection method testing interface
+interface ConnectionMethods {
+  websocket: boolean
+  broadcastChannel: boolean
+  localStorage: boolean
+  webrtc: boolean
+}
+
+// Test all available connection methods
+export const testAllConnectionMethods = async (): Promise<ConnectionMethods> => {
+  const results: ConnectionMethods = {
+    websocket: false,
+    broadcastChannel: false,
+    localStorage: false,
+    webrtc: false
+  }
+
+  // Test WebSocket support
+  try {
+    if (typeof WebSocket !== 'undefined') {
+      results.websocket = true
+      log('debug', '✅ WebSocket support available')
+    }
+  } catch (error) {
+    log('debug', '❌ WebSocket support not available', error)
+  }
+
+  // Test BroadcastChannel support
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const testChannel = new BroadcastChannel('test-support')
+      testChannel.close()
+      results.broadcastChannel = true
+      log('debug', '✅ BroadcastChannel support available')
+    }
+  } catch (error) {
+    log('debug', '❌ BroadcastChannel support not available', error)
+  }
+
+  // Test localStorage support
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('test-support', 'test')
+      localStorage.removeItem('test-support')
+      results.localStorage = true
+      log('debug', '✅ localStorage support available')
+    }
+  } catch (error) {
+    log('debug', '❌ localStorage support not available', error)
+  }
+
+  // Test WebRTC support
+  try {
+    if (typeof RTCPeerConnection !== 'undefined') {
+      const testPC = new RTCPeerConnection()
+      testPC.close()
+      results.webrtc = true
+      log('debug', '✅ WebRTC support available')
+    }
+  } catch (error) {
+    log('debug', '❌ WebRTC support not available', error)
+  }
+
+  log('info', '🔍 Connection method test results:', results)
+  return results
 }
