@@ -74,10 +74,12 @@ export class MuxStreamingService {
 
       // Generate playback URLs if playback IDs exist
       if (session.playbackIds.length > 0) {
-        const primaryPlaybackId = session.playbackIds[0].id
-        session.hlsUrl = this.muxClient.generatePlaybackUrl(primaryPlaybackId)
-        session.dashUrl = session.hlsUrl.replace('.m3u8', '.mpd')
-        session.thumbnailUrl = this.muxClient.generateThumbnailUrl(primaryPlaybackId)
+        const primaryPlaybackId = session.playbackIds[0]?.id
+        if (primaryPlaybackId) {
+          session.hlsUrl = this.muxClient.generatePlaybackUrl(primaryPlaybackId)
+          session.dashUrl = session.hlsUrl.replace('.m3u8', '.mpd')
+          session.thumbnailUrl = this.muxClient.generateThumbnailUrl(primaryPlaybackId)
+        }
       }
 
       this.currentSession = session
@@ -123,10 +125,12 @@ export class MuxStreamingService {
 
       // Generate playback URLs
       if (session.playbackIds.length > 0) {
-        const primaryPlaybackId = session.playbackIds[0].id
-        session.hlsUrl = this.muxClient.generatePlaybackUrl(primaryPlaybackId)
-        session.dashUrl = session.hlsUrl.replace('.m3u8', '.mpd')
-        session.thumbnailUrl = this.muxClient.generateThumbnailUrl(primaryPlaybackId)
+        const primaryPlaybackId = session.playbackIds[0]?.id
+        if (primaryPlaybackId) {
+          session.hlsUrl = this.muxClient.generatePlaybackUrl(primaryPlaybackId)
+          session.dashUrl = session.hlsUrl.replace('.m3u8', '.mpd')
+          session.thumbnailUrl = this.muxClient.generateThumbnailUrl(primaryPlaybackId)
+        }
       }
 
       if (!sessionId) {
@@ -326,7 +330,7 @@ export class MuxStreamingService {
     const streamState: StreamState = {
       isLive: true,
       isConnecting: false,
-      streamType: 'mux',
+      streamType: 'webcam',
       webcamEnabled: false,
       screenEnabled: false,
       viewerCount: 0,
@@ -342,7 +346,7 @@ export class MuxStreamingService {
     const streamState: StreamState = {
       isLive: false,
       isConnecting: false,
-      streamType: 'mux',
+      streamType: 'webcam',
       webcamEnabled: false,
       screenEnabled: false,
       viewerCount: 0,
@@ -358,7 +362,7 @@ export class MuxStreamingService {
     const streamState: StreamState = {
       isLive: false,
       isConnecting: false,
-      streamType: 'mux',
+      streamType: 'webcam',
       webcamEnabled: false,
       screenEnabled: false,
       viewerCount: 0,

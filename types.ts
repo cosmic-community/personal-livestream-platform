@@ -69,13 +69,6 @@ export interface MediaConstraints {
   audio?: MediaTrackConstraints | boolean
 }
 
-export interface RTCConfiguration {
-  iceServers: RTCIceServer[]
-  iceCandidatePoolSize?: number
-  bundlePolicy?: RTCBundlePolicy
-  rtcpMuxPolicy?: RTCRtcpMuxPolicy
-}
-
 export interface StreamState {
   isLive: boolean
   isConnecting: boolean

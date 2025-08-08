@@ -29,9 +29,9 @@ export const STREAM_CONFIG = {
       { urls: 'stun:stun.cloudflare.com:3478' }
     ],
     configuration: {
-      iceTransportPolicy: 'all',
-      bundlePolicy: 'max-bundle',
-      rtcpMuxPolicy: 'require',
+      iceTransportPolicy: 'all' as RTCIceTransportPolicy,
+      bundlePolicy: 'max-bundle' as RTCBundlePolicy,
+      rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,
       iceCandidatePoolSize: 10
     }
   },
