@@ -14,7 +14,7 @@ interface MuxLiveStream {
   reconnect_window: number
   reduced_latency: boolean
   created_at: string
-  recent_asset_ids?: string[] // Correct property name
+  recent_asset_ids?: string[]
 }
 
 interface MuxAsset {
@@ -75,7 +75,7 @@ class MuxClient {
         id: liveStream.id,
         status: liveStream.status,
         streamKey: liveStream.stream_key,
-        playbackIds: liveStream.playbook_ids,
+        playbackIds: liveStream.playback_ids, // Fixed: was playbook_ids
         rtmpUrl: `rtmps://global-live.mux.com:443/live/${liveStream.stream_key}`,
         reconnectWindow: liveStream.reconnect_window,
         reducedLatency: liveStream.reduced_latency,
@@ -95,12 +95,12 @@ class MuxClient {
         id: liveStream.id,
         status: liveStream.status,
         streamKey: liveStream.stream_key,
-        playbackIds: liveStream.playbook_ids,
+        playbackIds: liveStream.playback_ids, // Fixed: was playbook_ids
         rtmpUrl: `rtmps://global-live.mux.com:443/live/${liveStream.stream_key}`,
         reconnectWindow: liveStream.reconnect_window,
         reducedLatency: liveStream.reduced_latency,
         createdAt: liveStream.created_at,
-        recentAssets: liveStream.recent_asset_ids || [] // Fixed property name
+        recentAssets: liveStream.recent_asset_ids || []
       }
     } catch (error) {
       console.error('Failed to get live stream:', error)
@@ -110,7 +110,7 @@ class MuxClient {
 
   async deleteLiveStream(liveStreamId: string) {
     try {
-      await this.mux.video.liveStreams.delete(liveStreamId) // Fixed method name
+      await this.mux.video.liveStreams.delete(liveStreamId)
       return { success: true }
     } catch (error) {
       console.error('Failed to delete live stream:', error)
@@ -120,15 +120,10 @@ class MuxClient {
 
   async enableLiveStream(liveStreamId: string) {
     try {
-      const liveStream = await this.mux.video.liveStreams.enable(liveStreamId)
-      // Handle the case where enable might not return the full object
-      if (liveStream && typeof liveStream === 'object' && 'id' in liveStream) {
-        return {
-          id: liveStream.id,
-          status: liveStream.status
-        }
-      }
-      // Fallback: retrieve the stream to get current status
+      // Fixed: Handle void return type properly
+      await this.mux.video.liveStreams.enable(liveStreamId)
+      
+      // Always retrieve the updated stream to get current status
       const updatedStream = await this.mux.video.liveStreams.retrieve(liveStreamId)
       return {
         id: updatedStream.id,
@@ -142,15 +137,10 @@ class MuxClient {
 
   async disableLiveStream(liveStreamId: string) {
     try {
-      const liveStream = await this.mux.video.liveStreams.disable(liveStreamId)
-      // Handle the case where disable might not return the full object
-      if (liveStream && typeof liveStream === 'object' && 'id' in liveStream) {
-        return {
-          id: liveStream.id,
-          status: liveStream.status
-        }
-      }
-      // Fallback: retrieve the stream to get current status
+      // Fixed: Handle void return type properly
+      await this.mux.video.liveStreams.disable(liveStreamId)
+      
+      // Always retrieve the updated stream to get current status
       const updatedStream = await this.mux.video.liveStreams.retrieve(liveStreamId)
       return {
         id: updatedStream.id,
@@ -170,11 +160,11 @@ class MuxClient {
     normalizeAudio?: boolean
   }) {
     try {
-      // Ensure inputs array is properly typed and not undefined
+      // Fixed: Ensure inputs array is properly typed and handle undefined case
       const inputs: Input[] = input.url ? [{ url: input.url }] : []
       
       const asset = await this.mux.video.assets.create({
-        input: inputs.length > 0 ? inputs : undefined,
+        input: inputs, // Fixed: removed undefined case that caused type error
         playback_policy: [input.playbackPolicy || 'public'],
         mp4_support: input.mp4Support || 'none',
         normalize_audio: input.normalizeAudio || false
@@ -183,7 +173,7 @@ class MuxClient {
       return {
         id: asset.id,
         status: asset.status,
-        playbackIds: asset.playbook_ids,
+        playbackIds: asset.playback_ids, // Fixed: was playbook_ids
         mp4Support: asset.mp4_support,
         normalizeAudio: asset.normalize_audio,
         createdAt: asset.created_at
@@ -201,7 +191,7 @@ class MuxClient {
       return {
         id: asset.id,
         status: asset.status,
-        playbackIds: asset.playbook_ids,
+        playbackIds: asset.playback_ids, // Fixed: was playbook_ids
         mp4Support: asset.mp4_support,
         normalizeAudio: asset.normalize_audio,
         createdAt: asset.created_at,
@@ -216,7 +206,7 @@ class MuxClient {
 
   async deleteAsset(assetId: string) {
     try {
-      await this.mux.video.assets.delete(assetId) // Fixed method name
+      await this.mux.video.assets.delete(assetId)
       return { success: true }
     } catch (error) {
       console.error('Failed to delete asset:', error)
