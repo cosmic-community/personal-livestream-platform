@@ -35,7 +35,7 @@ class MuxClient {
     reducedLatency?: boolean
   } = {}) {
     try {
-      const liveStream = await this.mux.video.LiveStreams.create({
+      const liveStream = await this.mux.video.liveStreams.create({
         playback_policy: [options.playbackPolicy || 'public'],
         new_asset_settings: options.newAssetSettings ? {
           playback_policy: [options.newAssetSettings.playbackPolicy || 'public']
@@ -62,7 +62,7 @@ class MuxClient {
 
   async getLiveStream(liveStreamId: string) {
     try {
-      const liveStream = await this.mux.video.LiveStreams.retrieve(liveStreamId)
+      const liveStream = await this.mux.video.liveStreams.retrieve(liveStreamId)
       
       return {
         id: liveStream.id,
@@ -83,7 +83,7 @@ class MuxClient {
 
   async deleteLiveStream(liveStreamId: string) {
     try {
-      await this.mux.video.LiveStreams.del(liveStreamId)
+      await this.mux.video.liveStreams.del(liveStreamId)
       return { success: true }
     } catch (error) {
       console.error('Failed to delete live stream:', error)
@@ -93,7 +93,7 @@ class MuxClient {
 
   async enableLiveStream(liveStreamId: string) {
     try {
-      const liveStream = await this.mux.video.LiveStreams.enable(liveStreamId)
+      const liveStream = await this.mux.video.liveStreams.enable(liveStreamId)
       return {
         id: liveStream.id,
         status: liveStream.status
@@ -106,7 +106,7 @@ class MuxClient {
 
   async disableLiveStream(liveStreamId: string) {
     try {
-      const liveStream = await this.mux.video.LiveStreams.disable(liveStreamId)
+      const liveStream = await this.mux.video.liveStreams.disable(liveStreamId)
       return {
         id: liveStream.id,
         status: liveStream.status
@@ -125,7 +125,7 @@ class MuxClient {
     normalizeAudio?: boolean
   }) {
     try {
-      const asset = await this.mux.video.Assets.create({
+      const asset = await this.mux.video.assets.create({
         input: input.url ? [{ url: input.url }] : undefined,
         playback_policy: [input.playbackPolicy || 'public'],
         mp4_support: input.mp4Support || 'none',
@@ -148,7 +148,7 @@ class MuxClient {
 
   async getAsset(assetId: string) {
     try {
-      const asset = await this.mux.video.Assets.retrieve(assetId)
+      const asset = await this.mux.video.assets.retrieve(assetId)
       
       return {
         id: asset.id,
@@ -168,7 +168,7 @@ class MuxClient {
 
   async deleteAsset(assetId: string) {
     try {
-      await this.mux.video.Assets.del(assetId)
+      await this.mux.video.assets.del(assetId)
       return { success: true }
     } catch (error) {
       console.error('Failed to delete asset:', error)
