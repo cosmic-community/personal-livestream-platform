@@ -1,585 +1,340 @@
-import { socketManager } from '@/lib/socket'
-import { STREAM_CONFIG, log, createStreamError, testAllConnectionMethods } from '@/lib/stream-config'
+import { io, Socket } from 'socket.io-client'
+import { getStreamConfig, createStreamError, testAllConnectionMethods } from '@/lib/stream-config'
 
-export interface ConnectionHealth {
-  status: 'connected' | 'connecting' | 'disconnected' | 'fallback' | 'p2p'
-  quality: 'excellent' | 'good' | 'fair' | 'poor'
-  latency: number
-  retryCount: number
-  lastConnected?: string
-  serverUrl?: string
+export interface ConnectionConfig {
+  timeout: number
+  maxRetries: number
+  maxUrlAttempts: number
+  reconnectBackoff: number[]
+  transports: string[]
+  autoConnect: boolean
+  forceNew: boolean
+  healthCheckInterval: number
+}
+
+export interface ConnectionState {
+  isConnected: boolean
+  currentUrl: string | null
+  connectionAttempt: number
+  lastError: string | null
   fallbackMode: boolean
-  connectionMethod: 'websocket' | 'broadcastchannel' | 'localstorage' | 'webrtc-direct'
+  healthCheckActive: boolean
 }
 
-export interface NetworkStats {
-  online: boolean
-  latency: number
-  downloadSpeed?: number
-  uploadSpeed?: number
-  connectionType?: string
-  canReachServers: boolean
-  availableMethods: string[]
-}
-
-class ConnectionManager {
-  private healthCheckInterval: NodeJS.Timeout | null = null
-  private networkTestInterval: NodeJS.Timeout | null = null
-  private connectionHealth: ConnectionHealth = {
-    status: 'disconnected',
-    quality: 'poor',
-    latency: 0,
-    retryCount: 0,
-    fallbackMode: false,
-    connectionMethod: 'websocket'
-  }
-  private networkStats: NetworkStats = {
-    online: navigator.onLine,
-    latency: 0,
-    canReachServers: false,
-    availableMethods: []
-  }
+export class ConnectionManager {
+  private socket: Socket | null = null
+  private config: ConnectionConfig
+  private state: ConnectionState
+  private serverUrls: string[]
+  private currentUrlIndex = 0
+  private reconnectTimer: NodeJS.Timeout | null = null
+  private healthCheckTimer: NodeJS.Timeout | null = null
   private listeners: Map<string, Function[]> = new Map()
-  private broadcastChannel: BroadcastChannel | null = null
-  private connectionMethods: any = null
 
   constructor() {
-    this.initializeHealthMonitoring()
-    this.setupNetworkMonitoring()
-    this.setupBroadcastChannel()
-  }
-
-  // Initialize connection health monitoring
-  private initializeHealthMonitoring(): void {
-    log('info', '🔍 Initializing enhanced connection health monitoring')
-
-    this.healthCheckInterval = setInterval(() => {
-      this.checkConnectionHealth()
-    }, STREAM_CONFIG.CONNECTION.healthCheckInterval)
-
-    // Initial health check with delay
-    setTimeout(() => this.checkConnectionHealth(), 2000)
-  }
-
-  // Setup network monitoring
-  private setupNetworkMonitoring(): void {
-    log('info', '🌐 Setting up network monitoring')
-
-    // Monitor online/offline status
-    window.addEventListener('online', () => {
-      log('info', '🌐 Network came online')
-      this.networkStats.online = true
-      this.emit('network-status-changed', this.networkStats)
-      this.checkConnectionHealth()
-    })
-
-    window.addEventListener('offline', () => {
-      log('warn', '🌐 Network went offline')
-      this.networkStats.online = false
-      this.emit('network-status-changed', this.networkStats)
-    })
-
-    // Periodic network tests
-    this.networkTestInterval = setInterval(() => {
-      this.testNetworkPerformance()
-    }, 45000) // Every 45 seconds
-
-    // Initial network test
-    setTimeout(() => this.testNetworkPerformance(), 3000)
-  }
-
-  // Setup BroadcastChannel for cross-tab communication
-  private setupBroadcastChannel(): void {
-    try {
-      if ('BroadcastChannel' in window) {
-        this.broadcastChannel = new BroadcastChannel('livestream-sync')
-        
-        this.broadcastChannel.addEventListener('message', (event) => {
-          const { type, data } = event.data
-          
-          switch (type) {
-            case 'stream-started':
-              this.emit('cross-tab-stream-started', data)
-              break
-            case 'stream-ended':
-              this.emit('cross-tab-stream-ended', data)
-              break
-            case 'viewer-count':
-              this.emit('cross-tab-viewer-count', data)
-              break
-          }
-        })
-        
-        log('info', '📡 BroadcastChannel initialized for cross-tab sync')
-      }
-    } catch (error) {
-      log('warn', '⚠️ Failed to initialize BroadcastChannel', error)
+    const streamConfig = getStreamConfig()
+    this.serverUrls = streamConfig.SERVER_URLS
+    this.config = streamConfig.CONNECTION
+    this.state = {
+      isConnected: false,
+      currentUrl: null,
+      connectionAttempt: 0,
+      lastError: null,
+      fallbackMode: false,
+      healthCheckActive: false
     }
   }
 
-  // Check overall connection health with multiple methods
-  private async checkConnectionHealth(): Promise<void> {
-    try {
-      const socketHealth = socketManager.getConnectionHealth()
-      const isConnected = socketManager.isConnected()
-      const isFallback = socketManager.isFallbackMode()
-
-      // Test connection methods if not done yet
-      if (!this.connectionMethods) {
-        this.connectionMethods = await testAllConnectionMethods()
-        this.networkStats.availableMethods = Object.entries(this.connectionMethods)
-          .filter(([, available]) => available)
-          .map(([method]) => method)
-      }
-
-      // Determine connection method
-      let connectionMethod: ConnectionHealth['connectionMethod'] = 'websocket'
-      if (isFallback) {
-        if (this.connectionMethods?.broadcastChannel) {
-          connectionMethod = 'broadcastchannel'
-        } else if (this.connectionMethods?.localStorage) {
-          connectionMethod = 'localstorage'
-        } else if (this.connectionMethods?.webrtc) {
-          connectionMethod = 'webrtc-direct'
-        }
-      }
-
-      // Test server connectivity
-      let serverLatency = 0
-      if (isConnected && !isFallback) {
-        serverLatency = await this.pingServer()
-      }
-
-      const previousStatus = this.connectionHealth.status
-
-      this.connectionHealth = {
-        status: isConnected ? (isFallback ? 'fallback' : 'connected') : 
-               socketHealth.reconnectAttempts > 0 ? 'connecting' : 'disconnected',
-        quality: this.assessOverallQuality(serverLatency, this.networkStats),
-        latency: serverLatency,
-        retryCount: socketHealth.reconnectAttempts,
-        lastConnected: isConnected ? new Date().toISOString() : this.connectionHealth.lastConnected,
-        serverUrl: socketHealth.currentUrl,
-        fallbackMode: isFallback,
-        connectionMethod
-      }
-
-      // Emit status change if different
-      if (previousStatus !== this.connectionHealth.status) {
-        log('info', `🔄 Connection status changed: ${previousStatus} → ${this.connectionHealth.status}`)
-        this.emit('connection-status-changed', this.connectionHealth)
-      }
-
-      // Emit regular health updates
-      this.emit('health-update', this.connectionHealth)
-
-      // Broadcast connection status to other tabs
-      if (this.broadcastChannel) {
-        this.broadcastChannel.postMessage({
-          type: 'connection-status',
-          data: this.connectionHealth
-        })
-      }
-
-    } catch (error) {
-      log('error', '❌ Error checking connection health', error)
-    }
+  private log(message: string, data?: any): void {
+    console.log(`[ConnectionManager] ${message}`, data || '')
   }
 
-  // Test network performance with enhanced metrics
-  private async testNetworkPerformance(): Promise<void> {
-    try {
-      const testResults = await Promise.allSettled([
-        this.testLatency(),
-        this.testDownloadSpeed(),
-        this.testServerReachability(),
-        this.testWebRTCConnectivity()
-      ])
-
-      const [latencyResult, speedResult, reachabilityResult, webrtcResult] = testResults
-
-      this.networkStats = {
-        online: navigator.onLine,
-        latency: latencyResult.status === 'fulfilled' ? latencyResult.value : 5000,
-        downloadSpeed: speedResult.status === 'fulfilled' ? speedResult.value : undefined,
-        connectionType: this.getConnectionType(),
-        canReachServers: reachabilityResult.status === 'fulfilled' ? reachabilityResult.value : false,
-        availableMethods: this.networkStats.availableMethods || []
-      }
-
-      log('info', '📊 Enhanced network performance test completed', this.networkStats)
-      this.emit('network-performance-update', this.networkStats)
-
-    } catch (error) {
-      log('error', '❌ Error testing network performance', error)
-    }
-  }
-
-  // Test latency to multiple endpoints with timeout
-  private async testLatency(): Promise<number> {
-    const testUrls = [
-      'https://www.google.com/favicon.ico',
-      'https://www.cloudflare.com/favicon.ico',
-      'https://cdn.jsdelivr.net/npm/react@18.0.0/package.json',
-      'https://httpbin.org/status/200'
-    ]
-
-    const latencyPromises = testUrls.map(async (url) => {
-      const start = performance.now()
-      try {
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 4000)
-        
-        await fetch(url, { 
-          mode: 'no-cors',
-          cache: 'no-cache',
-          signal: controller.signal
-        })
-        
-        clearTimeout(timeoutId)
-        return performance.now() - start
-      } catch {
-        return 5000 // High penalty for failed requests
-      }
-    })
-
-    const latencies = await Promise.allSettled(latencyPromises)
-    const successfulLatencies = latencies
-      .filter((result): result is PromiseFulfilledResult<number> => result.status === 'fulfilled')
-      .map(result => result.value)
-      .filter(latency => latency < 5000)
-
-    return successfulLatencies.length > 0 ? Math.min(...successfulLatencies) : 5000
-  }
-
-  // Test download speed with better error handling
-  private async testDownloadSpeed(): Promise<number> {
-    try {
-      const testUrl = 'https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js'
-      const start = performance.now()
-      
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 8000)
-      
-      const response = await fetch(testUrl, {
-        cache: 'no-cache',
-        signal: controller.signal
-      })
-      
-      clearTimeout(timeoutId)
-      const data = await response.arrayBuffer()
-      const duration = (performance.now() - start) / 1000 // Convert to seconds
-      
-      return (data.byteLength * 8) / duration / 1000 // Convert to Kbps
-    } catch {
-      return 0
-    }
-  }
-
-  // Test if streaming servers are reachable
-  private async testServerReachability(): Promise<boolean> {
-    const serverUrls = STREAM_CONFIG.SERVER_URLS
-
-    for (const url of serverUrls) {
-      try {
-        // Try to connect to each server
-        const wsUrl = url.replace('http://', 'ws://').replace('https://', 'wss://')
-        const testSocket = new WebSocket(wsUrl)
-        
-        const isReachable = await new Promise<boolean>((resolve) => {
-          const timeout = setTimeout(() => {
-            testSocket.close()
-            resolve(false)
-          }, 3000)
-          
-          testSocket.onopen = () => {
-            clearTimeout(timeout)
-            testSocket.close()
-            resolve(true)
-          }
-          
-          testSocket.onerror = () => {
-            clearTimeout(timeout)
-            resolve(false)
-          }
-        })
-
-        if (isReachable) {
-          return true
-        }
-      } catch (error) {
-        log('warn', `Server ${url} not reachable`, error)
-      }
-    }
-
-    return false
-  }
-
-  // Test WebRTC connectivity
-  private async testWebRTCConnectivity(): Promise<boolean> {
-    try {
-      const config = {
-        iceServers: STREAM_CONFIG.WEBRTC.iceServers.slice(0, 3) // Test with first 3 STUN servers
-      }
-      
-      const pc = new RTCPeerConnection(config)
-      pc.createDataChannel('test')
-      await pc.createOffer()
-      
-      // Wait for ICE gathering with timeout
-      const iceComplete = await new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => resolve(false), 5000)
-        
-        pc.addEventListener('icegatheringstatechange', () => {
-          if (pc.iceGatheringState === 'complete') {
-            clearTimeout(timeout)
-            resolve(true)
-          }
-        })
-      })
-      
-      pc.close()
-      return iceComplete
-    } catch {
-      return false
-    }
-  }
-
-  // Ping server for latency measurement with timeout
-  private async pingServer(): Promise<number> {
-    return new Promise((resolve) => {
-      const start = performance.now()
-      const timeout = setTimeout(() => resolve(5000), 2000) // Shorter timeout
-
-      const handlePong = () => {
-        clearTimeout(timeout)
-        socketManager.off('heartbeat-ack', handlePong)
-        resolve(performance.now() - start)
-      }
-
-      socketManager.on('heartbeat-ack', handlePong)
-      
-      // Send ping
-      const socket = socketManager.connect()
-      if (socket?.connected) {
-        socket.emit('heartbeat', { timestamp: start })
-      } else {
-        clearTimeout(timeout)
-        resolve(5000)
-      }
-    })
-  }
-
-  // Get connection type from Network Information API
-  private getConnectionType(): string | undefined {
-    try {
-      if ('connection' in navigator) {
-        const conn = (navigator as any).connection
-        return conn?.effectiveType || conn?.type
-      }
-    } catch (error) {
-      log('warn', 'Could not get connection type', error)
-    }
-    return undefined
-  }
-
-  // Enhanced connection quality assessment
-  private assessOverallQuality(latency: number, networkStats: NetworkStats): 'excellent' | 'good' | 'fair' | 'poor' {
-    if (!networkStats.online) return 'poor'
-    
-    let score = 0
-    const maxScore = 100
-    
-    // Latency scoring (35% weight)
-    if (latency < 50) score += 35
-    else if (latency < 100) score += 28
-    else if (latency < 200) score += 20
-    else if (latency < 500) score += 12
-    else if (latency < 1000) score += 5
-    
-    // Download speed scoring (25% weight)
-    if (networkStats.downloadSpeed) {
-      if (networkStats.downloadSpeed > 5000) score += 25
-      else if (networkStats.downloadSpeed > 2000) score += 20
-      else if (networkStats.downloadSpeed > 1000) score += 15
-      else if (networkStats.downloadSpeed > 500) score += 10
-      else if (networkStats.downloadSpeed > 100) score += 5
-    } else {
-      score += 10 // Neutral score if unknown
-    }
-    
-    // Server reachability scoring (25% weight)
-    if (networkStats.canReachServers) score += 25
-    else if (networkStats.availableMethods.length > 0) score += 15
-    
-    // Connection type scoring (15% weight)
-    const connType = networkStats.connectionType
-    if (connType === '4g' || connType === 'wifi') score += 15
-    else if (connType === '3g') score += 8
-    else if (connType === '2g') score += 3
-    else score += 10 // Unknown connection gets neutral score
-    
-    const percentage = (score / maxScore) * 100
-    
-    if (percentage >= 80) return 'excellent'
-    else if (percentage >= 60) return 'good'
-    else if (percentage >= 40) return 'fair'
-    else return 'poor'
-  }
-
-  // Event emitter functionality
-  private emit(event: string, data: any): void {
-    const listeners = this.listeners.get(event) || []
-    listeners.forEach(listener => {
+  private emitEvent(event: string, data?: any): void {
+    const eventListeners = this.listeners.get(event) || []
+    eventListeners.forEach(listener => {
       try {
         listener(data)
       } catch (error) {
-        log('error', `Error in event listener for ${event}`, error)
+        console.error(`Error in event listener for ${event}:`, error)
       }
     })
   }
 
-  // Public API methods
-  public on(event: string, listener: Function): void {
+  async connect(): Promise<Socket | null> {
+    if (this.socket?.connected) {
+      return this.socket
+    }
+
+    this.log('Starting connection process...')
+    this.state.connectionAttempt = 0
+    this.state.lastError = null
+
+    // Test connection methods first
+    const connectionTests = await testAllConnectionMethods()
+    this.log('Connection tests:', connectionTests)
+
+    for (let urlAttempt = 0; urlAttempt < this.config.maxUrlAttempts; urlAttempt++) {
+      const url = this.serverUrls[this.currentUrlIndex]
+      this.log(`Attempting connection to ${url} (attempt ${urlAttempt + 1})`)
+
+      const success = await this.attemptConnection(url)
+      if (success) {
+        this.startHealthCheck()
+        return this.socket
+      }
+
+      // Try next URL
+      this.currentUrlIndex = (this.currentUrlIndex + 1) % this.serverUrls.length
+    }
+
+    // All connection attempts failed
+    this.log('All connection attempts failed, enabling fallback mode')
+    this.enableFallbackMode()
+    return null
+  }
+
+  private async attemptConnection(url: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      try {
+        this.socket = io(url, {
+          timeout: this.config.timeout,
+          transports: this.config.transports,
+          autoConnect: this.config.autoConnect,
+          forceNew: this.config.forceNew,
+          reconnection: false // We handle reconnection manually
+        })
+
+        const connectionTimeout = setTimeout(() => {
+          this.log('Connection timeout')
+          this.cleanup()
+          resolve(false)
+        }, this.config.timeout)
+
+        this.socket.on('connect', () => {
+          clearTimeout(connectionTimeout)
+          this.log(`Connected successfully to ${url}`)
+          
+          this.state.isConnected = true
+          this.state.currentUrl = url
+          this.state.fallbackMode = false
+          this.state.lastError = null
+
+          this.setupSocketEventHandlers()
+          this.emitEvent('connected', { url })
+          resolve(true)
+        })
+
+        this.socket.on('connect_error', (error) => {
+          clearTimeout(connectionTimeout)
+          this.log('Connection error:', error.message)
+          this.state.lastError = error.message
+          this.cleanup()
+          resolve(false)
+        })
+
+        this.socket.on('disconnect', (reason) => {
+          this.log('Disconnected:', reason)
+          this.handleDisconnection(reason)
+        })
+
+      } catch (error) {
+        this.log('Error creating socket:', error)
+        resolve(false)
+      }
+    })
+  }
+
+  private setupSocketEventHandlers(): void {
+    if (!this.socket) return
+
+    // Relay all socket events to our event system
+    this.socket.onAny((event, ...args) => {
+      this.emitEvent(event, args.length === 1 ? args[0] : args)
+    })
+
+    // Handle specific events
+    this.socket.on('stream-started', (data) => {
+      this.emitEvent('stream-started', data)
+    })
+
+    this.socket.on('stream-ended', (data) => {
+      this.emitEvent('stream-ended', data)
+    })
+
+    this.socket.on('viewer-count', (count) => {
+      this.emitEvent('viewer-count', count)
+    })
+
+    this.socket.on('error', (error) => {
+      this.log('Socket error:', error)
+      this.emitEvent('socket-error', error)
+    })
+  }
+
+  private handleDisconnection(reason: string): void {
+    this.state.isConnected = false
+    this.state.currentUrl = null
+    this.stopHealthCheck()
+    
+    this.emitEvent('disconnected', { reason })
+
+    // Attempt reconnection unless it was manual
+    if (reason !== 'client disconnect') {
+      this.scheduleReconnection()
+    }
+  }
+
+  private scheduleReconnection(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+    }
+
+    const backoffIndex = Math.min(
+      this.state.connectionAttempt, 
+      this.config.reconnectBackoff.length - 1
+    )
+    const delay = this.config.reconnectBackoff[backoffIndex] || 5000
+
+    this.log(`Scheduling reconnection in ${delay}ms`)
+    
+    this.reconnectTimer = setTimeout(() => {
+      this.state.connectionAttempt++
+      if (this.state.connectionAttempt <= this.config.maxRetries) {
+        this.log('Attempting reconnection...')
+        this.connect()
+      } else {
+        this.log('Max reconnection attempts reached')
+        this.enableFallbackMode()
+      }
+    }, delay)
+  }
+
+  private startHealthCheck(): void {
+    if (this.healthCheckTimer || !this.config.healthCheckInterval) {
+      return
+    }
+
+    this.state.healthCheckActive = true
+    this.healthCheckTimer = setInterval(() => {
+      if (this.socket?.connected) {
+        this.socket.emit('ping', Date.now())
+      } else {
+        this.log('Health check failed - not connected')
+        this.handleDisconnection('health check failed')
+      }
+    }, this.config.healthCheckInterval)
+
+    this.log('Health check started')
+  }
+
+  private stopHealthCheck(): void {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer)
+      this.healthCheckTimer = null
+      this.state.healthCheckActive = false
+      this.log('Health check stopped')
+    }
+  }
+
+  private enableFallbackMode(): void {
+    this.log('Enabling fallback mode')
+    this.state.fallbackMode = true
+    this.emitEvent('fallback-mode-enabled')
+  }
+
+  private cleanup(): void {
+    if (this.socket) {
+      this.socket.removeAllListeners()
+      this.socket.disconnect()
+      this.socket = null
+    }
+  }
+
+  // Public methods
+  disconnect(): void {
+    this.log('Manual disconnect')
+    this.stopHealthCheck()
+    
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+
+    this.cleanup()
+    this.state.isConnected = false
+    this.state.currentUrl = null
+  }
+
+  forceReconnect(): void {
+    this.log('Force reconnect requested')
+    this.disconnect()
+    setTimeout(() => {
+      this.state.connectionAttempt = 0
+      this.connect()
+    }, 1000)
+  }
+
+  emit(event: string, data?: any): void {
+    if (this.socket?.connected) {
+      this.socket.emit(event, data)
+    } else if (this.state.fallbackMode) {
+      this.log(`Fallback mode: ignoring emit ${event}`)
+    } else {
+      this.log(`Cannot emit ${event}: not connected`)
+    }
+  }
+
+  on(event: string, listener: Function): void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, [])
     }
     this.listeners.get(event)!.push(listener)
   }
 
-  public off(event: string, listener?: Function): void {
-    const listeners = this.listeners.get(event)
-    if (!listeners) return
+  off(event: string, listener?: Function): void {
+    if (!this.listeners.has(event)) return
 
     if (listener) {
-      const index = listeners.indexOf(listener)
+      const eventListeners = this.listeners.get(event)!
+      const index = eventListeners.indexOf(listener)
       if (index > -1) {
-        listeners.splice(index, 1)
+        eventListeners.splice(index, 1)
       }
     } else {
-      this.listeners.set(event, [])
+      this.listeners.delete(event)
     }
   }
 
-  public getConnectionHealth(): ConnectionHealth {
-    return { ...this.connectionHealth }
+  // Getters
+  isConnected(): boolean {
+    return this.state.isConnected
   }
 
-  public getNetworkStats(): NetworkStats {
-    return { ...this.networkStats }
+  isFallbackMode(): boolean {
+    return this.state.fallbackMode
   }
 
-  // Force connection health check
-  public async forceHealthCheck(): Promise<ConnectionHealth> {
-    await this.checkConnectionHealth()
-    await this.testNetworkPerformance()
-    return this.getConnectionHealth()
+  getConnectionState(): ConnectionState {
+    return { ...this.state }
   }
 
-  // Get enhanced connection recommendations
-  public getConnectionRecommendations(): string[] {
-    const recommendations = []
-    const health = this.connectionHealth
-    const network = this.networkStats
-
-    if (!network.online) {
-      recommendations.push('Check your internet connection')
-    }
-
-    if (health.latency > 1000) {
-      recommendations.push('Very high latency - consider switching to a faster network')
-    } else if (health.latency > 500) {
-      recommendations.push('High latency detected - streaming quality may be affected')
-    }
-
-    if (network.downloadSpeed && network.downloadSpeed < 500) {
-      recommendations.push('Low bandwidth - consider reducing stream quality')
-    } else if (network.downloadSpeed && network.downloadSpeed < 1000) {
-      recommendations.push('Limited bandwidth - medium quality recommended')
-    }
-
-    if (!network.canReachServers && network.availableMethods.length === 0) {
-      recommendations.push('Cannot reach servers and no fallback methods available - check firewall settings')
-    } else if (!network.canReachServers) {
-      recommendations.push('Using fallback connection methods - some features may be limited')
-    }
-
-    if (health.fallbackMode) {
-      recommendations.push(`Using ${health.connectionMethod} fallback mode - functionality may be limited`)
-    }
-
-    if (health.retryCount > 3) {
-      recommendations.push('Multiple connection failures - try clearing browser cache or using a different browser')
-    }
-
-    if (network.connectionType === '2g') {
-      recommendations.push('2G connection detected - streaming may not work properly')
-    } else if (network.connectionType === '3g') {
-      recommendations.push('3G connection - consider switching to WiFi for better performance')
-    }
-
-    if (recommendations.length === 0) {
-      if (health.quality === 'excellent') {
-        recommendations.push('Connection is excellent - ready for high-quality streaming!')
-      } else if (health.quality === 'good') {
-        recommendations.push('Connection is good - streaming should work well')
-      } else {
-        recommendations.push('Connection is adequate for basic streaming')
-      }
-    }
-
-    return recommendations
+  getCurrentUrl(): string | null {
+    return this.state.currentUrl
   }
 
-  // Send message via BroadcastChannel
-  public broadcastMessage(type: string, data: any): void {
-    if (this.broadcastChannel) {
-      try {
-        this.broadcastChannel.postMessage({ type, data })
-      } catch (error) {
-        log('warn', 'Failed to broadcast message', error)
-      }
-    }
-  }
-
-  // Check if specific connection method is available
-  public isMethodAvailable(method: string): boolean {
-    return this.networkStats.availableMethods.includes(method)
-  }
-
-  // Get best available connection method
-  public getBestConnectionMethod(): string {
-    const methods = this.networkStats.availableMethods
-    
-    if (methods.includes('websocket')) return 'websocket'
-    if (methods.includes('webrtc')) return 'webrtc-direct'
-    if (methods.includes('broadcastchannel')) return 'broadcastchannel'
-    if (methods.includes('localstorage')) return 'localstorage'
-    
-    return 'none'
-  }
-
-  // Cleanup
-  public destroy(): void {
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval)
-      this.healthCheckInterval = null
-    }
-
-    if (this.networkTestInterval) {
-      clearInterval(this.networkTestInterval)
-      this.networkTestInterval = null
-    }
-
-    if (this.broadcastChannel) {
-      this.broadcastChannel.close()
-      this.broadcastChannel = null
-    }
-
-    this.listeners.clear()
-    log('info', '🧹 Connection manager destroyed')
+  getSocket(): Socket | null {
+    return this.socket
   }
 }
 
 // Export singleton instance
-export const connectionManager = new ConnectionManager()
+let connectionManager: ConnectionManager | null = null
+
+export function getConnectionManager(): ConnectionManager {
+  if (!connectionManager) {
+    connectionManager = new ConnectionManager()
+  }
+  return connectionManager
+}
+
+export default ConnectionManager

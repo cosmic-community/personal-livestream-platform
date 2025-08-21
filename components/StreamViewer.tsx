@@ -101,7 +101,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
       await handleStreamOffer(offer)
     })
 
-    socketManager.onIceCandidate(async (candidate) => {
+    socketManager.onIceCandidate(async (candidate: RTCIceCandidateInit) => {
       if (peerConnectionRef.current) {
         await handleIceCandidate(peerConnectionRef.current, candidate)
       }
@@ -189,11 +189,11 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
 
       // Create new peer connection
       const peerConnection = createPeerConnection(
-        (candidate) => {
+        (candidate: RTCIceCandidate) => {
           console.log('🧊 Sending ICE candidate')
           socketManager.sendIceCandidate(candidate, socketManager.getSocketId())
         },
-        (state) => {
+        (state: RTCPeerConnectionState) => {
           console.log('🔗 Connection state changed:', state)
           if (state === 'connected') {
             setViewerState((prev: ViewerState) => ({
@@ -240,7 +240,7 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
             }, 5000)
           }
         },
-        (event) => {
+        (event: RTCTrackEvent) => {
           // Handle incoming stream
           console.log('📺 Received remote stream')
           if (videoRef.current && event.streams[0]) {

@@ -1,562 +1,408 @@
 import { socketManager } from '@/lib/socket'
-import { connectionManager } from '@/lib/connection-manager'
-import { 
-  getUserMediaStream, 
-  createPeerConnection, 
-  createOffer, 
+import {
+  getUserMediaStream,
+  createPeerConnection,
+  createOffer,
   createAnswer,
   handleIceCandidate,
   stopMediaStream,
   combineStreams,
   monitorConnectionQuality
 } from '@/lib/webrtc'
-import { StreamType, StreamState, StreamError } from '@/types'
-import { STREAM_CONFIG, log } from '@/lib/stream-config'
+import { StreamState, StreamType, StreamError, BroadcasterState } from '@/types'
 
 interface StreamManagerConfig {
-  onStateChange?: (state: StreamState) => void
-  onError?: (error: StreamError) => void
-  onViewerCountChange?: (count: number) => void
-  onStreamQualityChange?: (quality: string) => void
+  debug?: boolean
+  videoConstraints?: MediaStreamConstraints['video']
+  audioConstraints?: MediaStreamConstraints['audio']
 }
 
-class StreamManager {
-  private currentStream?: MediaStream
-  private webcamStream?: MediaStream
-  private screenStream?: MediaStream
-  private localStream?: MediaStream
-  private remoteStream?: MediaStream
-  private peerConnections: Map<string, RTCPeerConnection> = new Map()
-  private isStreaming = false
-  private sessionId: string | null = null
-  private streamType: StreamType = 'webcam'
-  private config: StreamManagerConfig = {}
-  private qualityMonitors: Map<string, () => void> = new Map()
-  private streamStats = {
-    startTime: null as Date | null,
-    bytesTransmitted: 0,
-    packetsLost: 0,
-    averageLatency: 0,
-    peakViewers: 0,
-    currentViewers: 0
+export class StreamManager {
+  private config: StreamManagerConfig
+  private state: BroadcasterState = {
+    isLive: false,
+    isConnecting: false,
+    streamType: 'webcam',
+    webcamEnabled: false,
+    screenEnabled: false,
+    viewerCount: 0,
+    streamQuality: 'auto'
   }
+
+  private localStreams: Map<StreamType, MediaStream> = new Map()
+  private combinedStream: MediaStream | null = null
+  private peerConnections: Map<string, RTCPeerConnection> = new Map()
+  private qualityMonitors: Map<string, () => void> = new Map()
+
+  // Event handlers
+  private onStateChangeCb?: (state: BroadcasterState) => void
+  private onErrorCb?: (error: StreamError) => void
 
   constructor(config: StreamManagerConfig = {}) {
-    this.config = config
-    this.initializeEventListeners()
+    this.config = {
+      debug: config.debug || false,
+      videoConstraints: config.videoConstraints || {
+        width: { ideal: 1280, max: 1920 },
+        height: { ideal: 720, max: 1080 },
+        frameRate: { ideal: 30, max: 60 }
+      },
+      audioConstraints: config.audioConstraints || {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    }
+
+    this.setupSocketListeners()
   }
 
-  private initializeEventListeners(): void {
-    // Socket event listeners
-    socketManager.onStreamStarted((data) => {
-      log('info', '✅ Stream started successfully', data)
-      this.sessionId = data.sessionId
-      this.isStreaming = true
-      this.streamStats.startTime = new Date()
-      this.emitStateChange()
-    })
-
-    socketManager.onStreamEnded((data) => {
-      log('info', '🛑 Stream ended', data)
-      this.handleStreamEnd()
-    })
-
-    socketManager.onViewerCount((count) => {
-      this.streamStats.currentViewers = count
-      this.streamStats.peakViewers = Math.max(this.streamStats.peakViewers, count)
-      this.config.onViewerCountChange?.(count)
-    })
-
-    socketManager.onStreamOffer(async (offer) => {
-      await this.handleIncomingOffer(offer)
-    })
-
-    socketManager.onStreamAnswer(async (answer) => {
-      await this.handleIncomingAnswer(answer)
-    })
-
-    socketManager.onIceCandidate(async (candidate) => {
-      await this.handleIncomingIceCandidate(candidate)
-    })
-
-    socketManager.onStreamError((error) => {
-      log('error', '❌ Stream error', error)
-      // Convert StreamErrorEvent to StreamError by adding timestamp
-      const streamError: StreamError = {
-        ...error,
-        timestamp: error.timestamp || new Date().toISOString()
-      }
-      this.config.onError?.(streamError)
-    })
-
-    // Connection health monitoring with proper type handling
-    connectionManager.on('connection-status-changed', (health: any) => {
-      log('info', '🔄 Connection status changed', health)
-      if (health?.status === 'disconnected' && this.isStreaming) {
-        this.handleConnectionLoss()
-      }
-    })
-  }
-
-  // Start streaming with specified type
-  async startStream(streamType: StreamType): Promise<void> {
-    try {
-      log('info', `🚀 Starting ${streamType} stream`)
-      
-      // Check connection first
-      if (!socketManager.isConnected()) {
-        throw new Error('Not connected to streaming server')
-      }
-
-      // Get media streams based on type
-      await this.acquireMediaStreams(streamType)
-
-      // Start broadcasting via socket
-      await socketManager.startBroadcast(streamType)
-
-      this.streamType = streamType
-      this.emitStateChange()
-
-      log('info', '✅ Stream started successfully')
-
-    } catch (error) {
-      log('error', '❌ Failed to start stream', error)
-      await this.cleanup()
-      throw error
+  private log(message: string, data?: any): void {
+    if (this.config.debug) {
+      console.log(`[StreamManager] ${message}`, data || '')
     }
   }
 
-  // Stop streaming
-  async stopStream(): Promise<void> {
-    try {
-      log('info', '🛑 Stopping stream')
-      
-      // Stop socket broadcast
-      socketManager.stopBroadcast()
-
-      // Handle cleanup
-      this.handleStreamEnd()
-
-      log('info', '✅ Stream stopped successfully')
-
-    } catch (error) {
-      log('error', '❌ Error stopping stream', error)
-      throw error
-    }
+  private emitStateChange(): void {
+    this.onStateChangeCb?.(this.state)
   }
 
-  // Toggle webcam on/off during live stream
-  async toggleWebcam(): Promise<void> {
-    if (!this.isStreaming) return
+  private emitError(error: StreamError): void {
+    this.onErrorCb?.(error)
+  }
 
-    try {
-      if (this.webcamStream) {
-        // Turn off webcam
-        stopMediaStream(this.webcamStream)
-        this.webcamStream = undefined
-        
-        // Remove webcam tracks from combined stream
-        if (this.currentStream) {
-          const videoTracks = this.currentStream.getVideoTracks()
-          videoTracks.forEach(track => {
-            if (track.label.toLowerCase().includes('camera')) {
-              track.stop()
-              this.currentStream?.removeTrack(track)
-            }
-          })
-        }
-        
-        log('info', '📹 Webcam disabled')
-      } else {
-        // Turn on webcam
-        this.webcamStream = await getUserMediaStream('webcam')
-        
-        // Add webcam tracks to combined stream
-        if (this.currentStream && this.webcamStream) {
-          this.webcamStream.getTracks().forEach(track => {
-            this.currentStream?.addTrack(track)
-          })
-        }
-        
-        log('info', '📹 Webcam enabled')
+  private setupSocketListeners(): void {
+    socketManager.onViewerJoined(async (data: { socketId: string }) => {
+      this.log('Viewer joined:', data.socketId)
+      await this.handleViewerConnection(data.socketId)
+    })
+
+    socketManager.onViewerLeft((data: { socketId: string }) => {
+      this.log('Viewer left:', data.socketId)
+      this.handleViewerDisconnection(data.socketId)
+    })
+
+    socketManager.onAnswer(async (data: { answer: RTCSessionDescriptionInit; socketId: string }) => {
+      this.log('Received answer from viewer:', data.socketId)
+      await this.handleViewerAnswer(data.socketId, data.answer)
+    })
+
+    socketManager.onIceCandidate(async (data: { candidate: RTCIceCandidateInit; socketId: string }) => {
+      const peerConnection = this.peerConnections.get(data.socketId)
+      if (peerConnection) {
+        await handleIceCandidate(peerConnection, data.candidate)
       }
+    })
 
-      // Update peer connections with new stream
-      await this.updatePeerConnections()
+    socketManager.onViewerCount((count: number) => {
+      this.state.viewerCount = count
+      this.emitStateChange()
+    })
+  }
+
+  async startStream(type: StreamType): Promise<void> {
+    try {
+      this.log(`Starting ${type} stream...`)
+      this.state.isConnecting = true
+      this.state.streamType = type
       this.emitStateChange()
 
-    } catch (error) {
-      log('error', '❌ Error toggling webcam', error)
-      throw error
-    }
-  }
+      // Get media stream based on type
+      let mediaStream: MediaStream | undefined
 
-  // Toggle screen share on/off during live stream
-  async toggleScreen(): Promise<void> {
-    if (!this.isStreaming) return
-
-    try {
-      if (this.screenStream) {
-        // Turn off screen share
-        stopMediaStream(this.screenStream)
-        this.screenStream = undefined
-        
-        // Remove screen tracks from combined stream
-        if (this.currentStream) {
-          const videoTracks = this.currentStream.getVideoTracks()
-          videoTracks.forEach(track => {
-            if (!track.label.toLowerCase().includes('camera')) {
-              track.stop()
-              this.currentStream?.removeTrack(track)
-            }
-          })
-        }
-        
-        log('info', '🖥️ Screen share disabled')
-      } else {
-        // Turn on screen share
-        this.screenStream = await getUserMediaStream('screen')
-        
-        // Add screen tracks to combined stream
-        if (this.currentStream && this.screenStream) {
-          this.screenStream.getTracks().forEach(track => {
-            this.currentStream?.addTrack(track)
-          })
-        }
-        
-        log('info', '🖥️ Screen share enabled')
-      }
-
-      // Update peer connections with new stream
-      await this.updatePeerConnections()
-      this.emitStateChange()
-
-    } catch (error) {
-      log('error', '❌ Error toggling screen share', error)
-      throw error
-    }
-  }
-
-  // Get media streams based on type
-  private async acquireMediaStreams(streamType: StreamType): Promise<void> {
-    const streams: MediaStream[] = []
-
-    try {
-      switch (streamType) {
+      switch (type) {
         case 'webcam':
-          this.webcamStream = await getUserMediaStream('webcam')
-          if (this.webcamStream) streams.push(this.webcamStream)
+          mediaStream = await this.getWebcamStream()
+          if (mediaStream) {
+            this.localStreams.set('webcam', mediaStream)
+            this.state.webcamEnabled = true
+            this.state.screenEnabled = false
+          }
           break
 
         case 'screen':
-          this.screenStream = await getUserMediaStream('screen')
-          if (this.screenStream) streams.push(this.screenStream)
+          mediaStream = await this.getScreenStream()
+          if (mediaStream) {
+            this.localStreams.set('screen', mediaStream)
+            this.state.webcamEnabled = false
+            this.state.screenEnabled = true
+          }
           break
 
         case 'both':
         case 'combined':
-          // Get both streams
-          const [webcam, screen] = await Promise.allSettled([
-            getUserMediaStream('webcam'),
-            getUserMediaStream('screen')
-          ])
-
-          if (webcam.status === 'fulfilled' && webcam.value) {
-            this.webcamStream = webcam.value
-            streams.push(this.webcamStream)
+          const webcamStream = await this.getWebcamStream()
+          const screenStream = await this.getScreenStream()
+          
+          if (webcamStream && screenStream) {
+            this.localStreams.set('webcam', webcamStream)
+            this.localStreams.set('screen', screenStream)
+            mediaStream = combineStreams([webcamStream, screenStream])
+            this.state.webcamEnabled = true
+            this.state.screenEnabled = true
+          } else {
+            throw new Error('Failed to get both webcam and screen streams')
           }
-
-          if (screen.status === 'fulfilled' && screen.value) {
-            this.screenStream = screen.value
-            streams.push(this.screenStream)
-          }
-
           break
 
         default:
-          throw new Error(`Unsupported stream type: ${streamType}`)
+          throw new Error(`Unsupported stream type: ${type}`)
       }
 
-      // Combine streams if multiple
-      if (streams.length > 1) {
-        this.currentStream = await combineStreams(streams)
-      } else if (streams.length === 1) {
-        this.currentStream = streams[0]
+      if (!mediaStream) {
+        throw new Error(`Failed to get ${type} stream`)
       }
 
-      if (!this.currentStream) {
-        throw new Error('Failed to acquire any media streams')
-      }
+      this.combinedStream = mediaStream
 
-      log('info', `✅ Acquired ${streamType} stream with ${this.currentStream.getTracks().length} tracks`)
+      // Start broadcasting
+      await socketManager.startBroadcast(type)
+
+      this.state.isLive = true
+      this.state.isConnecting = false
+      this.emitStateChange()
+
+      this.log('Stream started successfully')
 
     } catch (error) {
-      // Cleanup any partially created streams
-      streams.forEach(stream => stopMediaStream(stream))
-      this.webcamStream = undefined
-      this.screenStream = undefined
-      this.currentStream = undefined
+      this.log('Failed to start stream:', error)
+      this.state.isConnecting = false
+      this.emitStateChange()
+
+      this.emitError({
+        code: 'STREAM_START_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to start stream',
+        timestamp: new Date().toISOString()
+      })
+
       throw error
     }
   }
 
-  // Handle incoming WebRTC offer (for viewers connecting)
-  private async handleIncomingOffer(offer: RTCSessionDescriptionInit): Promise<void> {
+  async stopStream(): Promise<void> {
     try {
-      log('info', '📥 Handling incoming WebRTC offer')
+      this.log('Stopping stream...')
 
-      if (!this.currentStream) {
-        log('warn', '⚠️ No active stream to offer, creating offer without media')
+      // Stop socket broadcast
+      socketManager.stopBroadcast()
+
+      // Close all peer connections
+      this.peerConnections.forEach((pc, socketId) => {
+        pc.close()
+        const monitor = this.qualityMonitors.get(socketId)
+        if (monitor) {
+          monitor()
+          this.qualityMonitors.delete(socketId)
+        }
+      })
+      this.peerConnections.clear()
+
+      // Stop all local streams
+      this.localStreams.forEach((stream) => {
+        stopMediaStream(stream)
+      })
+      this.localStreams.clear()
+
+      if (this.combinedStream) {
+        stopMediaStream(this.combinedStream)
+        this.combinedStream = null
       }
 
-      // Create peer connection for this viewer
-      const viewerId = `viewer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      
+      // Reset state
+      this.state = {
+        isLive: false,
+        isConnecting: false,
+        streamType: 'webcam',
+        webcamEnabled: false,
+        screenEnabled: false,
+        viewerCount: 0,
+        streamQuality: 'auto'
+      }
+
+      this.emitStateChange()
+      this.log('Stream stopped successfully')
+
+    } catch (error) {
+      this.log('Error stopping stream:', error)
+      throw error
+    }
+  }
+
+  private async getWebcamStream(): Promise<MediaStream | undefined> {
+    try {
+      const stream = await getUserMediaStream({
+        video: this.config.videoConstraints,
+        audio: this.config.audioConstraints
+      })
+      this.log('Webcam stream acquired')
+      return stream
+    } catch (error) {
+      this.log('Failed to get webcam stream:', error)
+      return undefined
+    }
+  }
+
+  private async getScreenStream(): Promise<MediaStream | undefined> {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true
+      })
+      this.log('Screen stream acquired')
+      return stream
+    } catch (error) {
+      this.log('Failed to get screen stream:', error)
+      return undefined
+    }
+  }
+
+  private async handleViewerConnection(socketId: string): Promise<void> {
+    try {
+      if (!this.combinedStream) {
+        throw new Error('No active stream to share')
+      }
+
+      this.log('Setting up peer connection for viewer:', socketId)
+
       const peerConnection = createPeerConnection(
-        (candidate) => {
-          socketManager.sendIceCandidate(candidate, viewerId)
+        (candidate: RTCIceCandidate) => {
+          socketManager.sendIceCandidate(candidate, socketId)
         },
-        (state) => {
-          log('info', `🔗 Peer connection state for ${viewerId}: ${state}`)
+        (state: RTCPeerConnectionState) => {
+          this.log(`Peer connection state changed for ${socketId}:`, state)
           if (state === 'disconnected' || state === 'failed') {
-            this.removePeerConnection(viewerId)
+            this.handleViewerDisconnection(socketId)
           }
+        },
+        (event: RTCTrackEvent) => {
+          this.log('Unexpected track event in broadcaster mode')
         }
       )
 
-      // Add stream to peer connection if available
-      if (this.currentStream) {
-        this.currentStream.getTracks().forEach(track => {
-          peerConnection.addTrack(track, this.currentStream!)
+      // Add stream tracks to peer connection
+      if (this.combinedStream) {
+        this.combinedStream.getTracks().forEach(track => {
+          if (this.combinedStream) {  // Additional null check for type safety
+            peerConnection.addTrack(track, this.combinedStream)
+          }
         })
       }
 
-      // Set remote description and create answer
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
-      const answer = await createAnswer(peerConnection, offer)
+      // Create and send offer
+      const offer = await createOffer(peerConnection)
+      socketManager.sendOffer(offer, socketId)
 
       // Store peer connection
-      this.peerConnections.set(viewerId, peerConnection)
+      this.peerConnections.set(socketId, peerConnection)
 
-      // Start quality monitoring for this connection
-      this.startQualityMonitoring(viewerId, peerConnection)
-
-      // Send answer back
-      socketManager.sendAnswer(answer, viewerId)
-
-      log('info', `✅ WebRTC offer handled for ${viewerId}`)
-
-    } catch (error) {
-      log('error', '❌ Error handling WebRTC offer', error)
-      throw error
-    }
-  }
-
-  // Handle incoming WebRTC answer
-  private async handleIncomingAnswer(answer: RTCSessionDescriptionInit): Promise<void> {
-    try {
-      log('info', '📥 Handling incoming WebRTC answer')
-
-      // Find the appropriate peer connection
-      // In this case, we're the broadcaster, so we don't expect answers
-      // This would be used if we were implementing bidirectional communication
-
-    } catch (error) {
-      log('error', '❌ Error handling WebRTC answer', error)
-    }
-  }
-
-  // Handle incoming ICE candidate
-  private async handleIncomingIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
-    try {
-      // Apply candidate to all peer connections
-      const promises = Array.from(this.peerConnections.values()).map(pc =>
-        handleIceCandidate(pc, candidate)
-      )
-
-      await Promise.allSettled(promises)
-
-    } catch (error) {
-      log('error', '❌ Error handling ICE candidate', error)
-    }
-  }
-
-  // Update all peer connections with new stream
-  private async updatePeerConnections(): Promise<void> {
-    if (!this.currentStream) {
-      log('warn', '⚠️ No current stream to update peer connections with')
-      return
-    }
-
-    try {
-      const promises = Array.from(this.peerConnections.entries()).map(async ([viewerId, pc]) => {
-        // Remove old tracks
-        pc.getSenders().forEach(sender => pc.removeTrack(sender))
-
-        // Add new tracks
-        if (this.currentStream) {
-          this.currentStream.getTracks().forEach(track => {
-            pc.addTrack(track, this.currentStream!)
-          })
-        }
-
-        // Create new offer with updated stream
-        const offer = await createOffer(pc, this.currentStream!)
-        socketManager.sendOffer(offer, viewerId)
+      // Start quality monitoring
+      const stopMonitoring = monitorConnectionQuality(peerConnection, (stats: RTCStatsReport) => {
+        this.handleConnectionStats(socketId, stats)
       })
-
-      await Promise.allSettled(promises)
-      log('info', '✅ Updated all peer connections')
+      this.qualityMonitors.set(socketId, stopMonitoring)
 
     } catch (error) {
-      log('error', '❌ Error updating peer connections', error)
+      this.log('Error handling viewer connection:', error)
+      this.emitError({
+        code: 'VIEWER_CONNECTION_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to connect viewer',
+        timestamp: new Date().toISOString(),
+        details: { socketId }
+      })
     }
   }
 
-  // Start quality monitoring for a peer connection
-  private startQualityMonitoring(viewerId: string, peerConnection: RTCPeerConnection): void {
-    const stopMonitoring = monitorConnectionQuality(peerConnection, (stats) => {
-      // Update stream statistics
-      this.streamStats.bytesTransmitted += stats.bytesSent
-      this.streamStats.packetsLost += stats.packetsLost
-      this.streamStats.averageLatency = stats.rtt
+  private handleViewerDisconnection(socketId: string): void {
+    this.log('Handling viewer disconnection:', socketId)
 
-      // Emit quality changes
-      this.config.onStreamQualityChange?.(stats.quality)
-
-      log('info', `📊 Connection quality for ${viewerId}:`, {
-        quality: stats.quality,
-        latency: Math.round(stats.rtt),
-        packetsLost: stats.packetsLost,
-        bandwidth: Math.round(stats.bandwidth / 1000) + ' kbps'
-      })
-    })
-
-    this.qualityMonitors.set(viewerId, stopMonitoring)
-  }
-
-  // Remove peer connection and cleanup
-  private removePeerConnection(viewerId: string): void {
-    const peerConnection = this.peerConnections.get(viewerId)
+    const peerConnection = this.peerConnections.get(socketId)
     if (peerConnection) {
       peerConnection.close()
-      this.peerConnections.delete(viewerId)
+      this.peerConnections.delete(socketId)
     }
 
-    const qualityMonitor = this.qualityMonitors.get(viewerId)
-    if (qualityMonitor) {
-      qualityMonitor()
-      this.qualityMonitors.delete(viewerId)
+    const monitor = this.qualityMonitors.get(socketId)
+    if (monitor) {
+      monitor()
+      this.qualityMonitors.delete(socketId)
     }
-
-    log('info', `🧹 Removed peer connection for ${viewerId}`)
   }
 
-  // Handle connection loss during streaming
-  private handleConnectionLoss(): void {
-    log('warn', '⚠️ Connection lost during streaming')
-    
-    // Keep streams alive but mark as connection issues
-    this.config.onError?.({
-      code: 'CONNECTION_LOST',
-      message: 'Connection to streaming server lost. Attempting to reconnect...',
-      timestamp: new Date().toISOString(),
-      context: { isStreaming: this.isStreaming }
+  private async handleViewerAnswer(socketId: string, answer: RTCSessionDescriptionInit): Promise<void> {
+    try {
+      const peerConnection = this.peerConnections.get(socketId)
+      if (!peerConnection) {
+        throw new Error('No peer connection found for viewer')
+      }
+
+      await peerConnection.setRemoteDescription(answer)
+      this.log('Answer set for viewer:', socketId)
+
+    } catch (error) {
+      this.log('Error handling viewer answer:', error)
+      this.handleViewerDisconnection(socketId)
+    }
+  }
+
+  private handleConnectionStats(socketId: string, stats: RTCStatsReport): void {
+    // Process connection quality statistics
+    let totalBytesReceived = 0
+    let totalBytesSent = 0
+    let packetLoss = 0
+
+    stats.forEach((report) => {
+      if (report.type === 'inbound-rtp') {
+        totalBytesReceived += report.bytesReceived || 0
+      } else if (report.type === 'outbound-rtp') {
+        totalBytesSent += report.bytesSent || 0
+        packetLoss = report.fractionLost || 0
+      }
     })
 
-    // The connection manager will handle reconnection
-    // When reconnected, we'll need to re-establish the stream
-  }
-
-  // Handle stream end
-  private handleStreamEnd(): void {
-    this.isStreaming = false
-    this.sessionId = null
-    
-    // Close all peer connections
-    this.peerConnections.forEach((pc, viewerId) => {
-      this.removePeerConnection(viewerId)
+    // Update quality metrics (could emit to UI)
+    this.log(`Connection stats for ${socketId}:`, {
+      bytesReceived: totalBytesReceived,
+      bytesSent: totalBytesSent,
+      packetLoss
     })
-    this.peerConnections.clear()
-
-    // Stop quality monitoring
-    this.qualityMonitors.forEach(stop => stop())
-    this.qualityMonitors.clear()
-
-    this.cleanup()
-    this.emitStateChange()
   }
 
-  // Cleanup all streams
-  private async cleanup(): Promise<void> {
-    if (this.currentStream) {
-      stopMediaStream(this.currentStream)
-      this.currentStream = undefined
-    }
-
-    if (this.webcamStream) {
-      stopMediaStream(this.webcamStream)
-      this.webcamStream = undefined
-    }
-
-    if (this.screenStream) {
-      stopMediaStream(this.screenStream)
-      this.screenStream = undefined
-    }
-
-    log('info', '🧹 Stream cleanup completed')
+  // Public methods
+  getCurrentStream(): MediaStream | null {
+    return this.combinedStream
   }
 
-  // Emit state change
-  private emitStateChange(): void {
-    const state: StreamState = {
-      isLive: this.isStreaming,
-      isConnecting: false,
-      streamType: this.streamType,
-      webcamEnabled: !!this.webcamStream,
-      screenEnabled: !!this.screenStream,
-      viewerCount: this.streamStats.currentViewers,
-      sessionId: this.sessionId || undefined
-    }
-
-    this.config.onStateChange?.(state)
+  getState(): BroadcasterState {
+    return { ...this.state }
   }
 
-  // Public getters
-  get isLive(): boolean {
-    return this.isStreaming
+  isStreaming(): boolean {
+    return this.state.isLive
   }
 
-  get currentStreamType(): StreamType {
-    return this.streamType
+  getViewerCount(): number {
+    return this.state.viewerCount
   }
 
-  get stream(): MediaStream | undefined {
-    return this.currentStream
+  getConnectedViewers(): string[] {
+    return Array.from(this.peerConnections.keys())
   }
 
-  get statistics() {
-    return {
-      ...this.streamStats,
-      duration: this.streamStats.startTime ? 
-        Date.now() - this.streamStats.startTime.getTime() : 0,
-      activePeerConnections: this.peerConnections.size
-    }
+  // Event handlers
+  onStateChange(callback: (state: BroadcasterState) => void): void {
+    this.onStateChangeCb = callback
+    // Emit current state immediately
+    callback(this.state)
   }
 
-  get hasWebcam(): boolean {
-    return !!this.webcamStream
+  onError(callback: (error: StreamError) => void): void {
+    this.onErrorCb = callback
   }
 
-  get hasScreen(): boolean {
-    return !!this.screenStream
-  }
-
-  // Destroy stream manager
   destroy(): void {
-    this.handleStreamEnd()
-    log('info', '🧹 Stream manager destroyed')
+    this.log('Destroying stream manager...')
+    this.stopStream().catch(console.error)
+    socketManager.disconnect()
   }
 }
 
-export { StreamManager }
+export default StreamManager
