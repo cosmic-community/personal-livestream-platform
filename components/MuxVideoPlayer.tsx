@@ -2,34 +2,7 @@
 
 import { useRef, useEffect, useState } from 'react'
 import Hls from 'hls.js'
-import * as mux from 'mux-embed'
-
-// Create proper type declarations for mux-embed
-interface MuxData {
-  env_key?: string
-  player_name?: string
-  player_version?: string
-  player_init_time?: number
-  video_id?: string
-  video_title?: string
-  video_stream_type?: string
-  viewer_user_id?: string
-  experiment_name?: string
-  sub_property_id?: string
-}
-
-interface MuxOptions {
-  debug?: boolean
-  hlsjs?: any
-  Hls?: any
-  data?: MuxData
-}
-
-// Type the mux-embed functions we use
-declare const mux: {
-  monitor: (video: HTMLVideoElement, options: MuxOptions) => void
-  updateData: (data: any) => void
-}
+import { monitor, updateData } from 'mux-embed'
 
 interface MuxVideoPlayerProps {
   playbackId: string
@@ -129,7 +102,7 @@ export default function MuxVideoPlayer({
 
       // Initialize Mux Data tracking
       try {
-        mux.monitor(video, {
+        monitor(video, {
           debug: false,
           hlsjs: hls,
           Hls: Hls,
@@ -161,7 +134,7 @@ export default function MuxVideoPlayer({
       
       // Initialize Mux Data tracking for native HLS
       try {
-        mux.monitor(video, {
+        monitor(video, {
           debug: false,
           data: {
             env_key: 'rp53rp6qs11209chk3qid8j44',
@@ -254,7 +227,7 @@ export default function MuxVideoPlayer({
   useEffect(() => {
     try {
       if (title && playbackId) {
-        mux.updateData({
+        updateData({
           video_title: title,
           video_id: playbackId
         })

@@ -166,7 +166,8 @@ export function useMux(): UseMuxReturn {
         const mostRecent = streamsData.reduce((latest, current) => 
           new Date(current.createdAt) > new Date(latest.createdAt) ? current : latest
         )
-        setActiveStream(mostRecent)
+        // Fixed: Check if mostRecent is defined before setting it
+        setActiveStream(mostRecent || null)
       }
 
     } catch (err) {
