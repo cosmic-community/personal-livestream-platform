@@ -12,20 +12,19 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const mux = getMuxClient()
+    const muxClient = getMuxClient()
     
-    const stream = await mux.getLiveStream(id)
+    const stream = await muxClient.getLiveStream(id)
     
-    return NextResponse.json({
-      id: stream.id,
+    return NextResponse.json({ 
       status: stream.status,
       isLive: stream.status === 'active'
     })
   } catch (error) {
-    console.error('Error fetching Mux stream status:', error)
+    console.error('Failed to get stream status:', error)
     return NextResponse.json(
-      { message: 'Failed to fetch stream status' }, 
-      { status: 404 }
+      { error: 'Failed to get stream status' },
+      { status: 500 }
     )
   }
 }
