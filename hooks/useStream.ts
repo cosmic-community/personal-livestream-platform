@@ -164,12 +164,12 @@ export function useStream(config: UseStreamConfig = {}) {
     setError(null)
   }, [])
 
-  // Get current stream
+  // Get current stream - Fix: Add null check for streamManagerRef
   const getCurrentStream = useCallback(() => {
     return streamManagerRef.current?.stream || null
   }, [])
 
-  // Get stream statistics
+  // Get stream statistics - Fix: Add null check for streamManagerRef
   const getStatistics = useCallback(() => {
     return streamManagerRef.current?.statistics || null
   }, [])
