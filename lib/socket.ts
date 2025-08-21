@@ -311,16 +311,16 @@ class SocketManager {
           resolve(this.socket as Socket)
         })
 
-        // Error handler
-        this.socket.once('connect_error', err => {
+        // Error handler - Fix TS7006: Parameter 'err' implicitly has an 'any' type
+        this.socket.once('connect_error', (err: Error) => {
           cleanUp()
           log('error', `❌ WebSocket connection error to ${url}:`, err.message)
           this.handleConnectionFailure(err.message)
           reject(err)
         })
 
-        // Disconnect handler
-        this.socket.once('disconnect', reason => {
+        // Disconnect handler - Fix TS7006: Parameter 'reason' implicitly has an 'any' type
+        this.socket.once('disconnect', (reason: string) => {
           log('warn', `🔌 WebSocket disconnected from ${url}:`, reason)
           if (!this.fallbackMode && reason !== 'io client disconnect') {
             this.handleConnectionFailure(reason)
@@ -428,8 +428,8 @@ class SocketManager {
       sock.emit('pong', { timestamp: Date.now() })
     })
 
-    // Handle incoming messages
-    sock.on('message', (data) => {
+    // Handle incoming messages - Fix TS7006: Parameter 'data' implicitly has an 'any' type
+    sock.on('message', (data: any) => {
       log('info', '📨 Received message:', data)
     })
 
@@ -442,11 +442,13 @@ class SocketManager {
       log('info', '🛑 Stream ended:', data)
     })
 
-    sock.on('stream-joined', (data) => {
+    // Fix TS7006: Parameter 'data' implicitly has an 'any' type
+    sock.on('stream-joined', (data: any) => {
       log('info', '👤 Joined stream:', data)
     })
 
-    sock.on('viewer-count', (data) => {
+    // Fix TS7006: Parameter 'data' implicitly has an 'any' type
+    sock.on('viewer-count', (data: any) => {
       log('info', '👥 Viewer count update:', data)
     })
 
