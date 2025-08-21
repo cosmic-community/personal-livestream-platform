@@ -53,7 +53,7 @@ export function useStream(config: UseStreamConfig = {}) {
             screenEnabled: state.screenEnabled,
             viewerCount: state.viewerCount,
             sessionId: state.currentSession?.id,
-            error: state.errors.length > 0 ? state.errors[state.errors.length - 1].message : undefined
+            error: state.errors.length > 0 ? state.errors[state.errors.length - 1]?.message : undefined
           }
           setStreamState(streamState)
           config.onStateChange?.(state)
@@ -164,20 +164,14 @@ export function useStream(config: UseStreamConfig = {}) {
     setError(null)
   }, [])
 
-  // Get current stream - FIXED: Add proper null check for streamManagerRef
+  // Get current stream - FIXED: Add proper null check and optional chaining
   const getCurrentStream = useCallback(() => {
-    if (!streamManagerRef.current) {
-      return null
-    }
-    return streamManagerRef.current.stream ?? null
+    return streamManagerRef.current?.stream ?? null
   }, [])
 
-  // Get stream statistics - FIXED: Add proper null check for streamManagerRef
+  // Get stream statistics - FIXED: Add proper null check and optional chaining
   const getStatistics = useCallback(() => {
-    if (!streamManagerRef.current) {
-      return null
-    }
-    return streamManagerRef.current.statistics ?? null
+    return streamManagerRef.current?.statistics ?? null
   }, [])
 
   // Check if streaming is available
