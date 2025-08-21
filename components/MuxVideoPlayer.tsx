@@ -4,6 +4,32 @@ import { useRef, useEffect, useState } from 'react'
 import Hls from 'hls.js'
 import mux from 'mux-embed'
 
+// Create type declaration for mux-embed
+declare module 'mux-embed' {
+  interface MuxOptions {
+    debug?: boolean
+    hlsjs?: any
+    Hls?: any
+    data?: {
+      env_key?: string
+      player_name?: string
+      player_version?: string
+      player_init_time?: number
+      video_id?: string
+      video_title?: string
+      video_stream_type?: string
+      viewer_user_id?: string
+      experiment_name?: string
+      sub_property_id?: string
+    }
+  }
+
+  function monitor(video: HTMLVideoElement, options: MuxOptions): void
+  function updateData(data: any): void
+
+  export = { monitor, updateData }
+}
+
 interface MuxVideoPlayerProps {
   playbackId: string
   title?: string
@@ -161,31 +187,31 @@ export default function MuxVideoPlayer({
       setErrorMessage('Video format not supported in this browser.')
     }
 
-    // Video event listeners
+    // Video event listeners - Fixed: Remove parameters to match expected signatures
     const handleLoadStart = () => {
       console.log('📡 Video load started')
-      onLoadStart?.(undefined)
+      onLoadStart?.()
     }
 
     const handleLoadedData = () => {
       console.log('✅ Video data loaded')
       setIsLoading(false)
-      onLoadedData?.(undefined)
+      onLoadedData?.()
     }
 
     const handlePlay = () => {
       console.log('▶️ Video play started')
-      onPlay?.(undefined)
+      onPlay?.()
     }
 
     const handlePause = () => {
       console.log('⏸️ Video paused')
-      onPause?.(undefined)
+      onPause?.()
     }
 
     const handleEnded = () => {
       console.log('🏁 Video ended')
-      onEnded?.(undefined)
+      onEnded?.()
     }
 
     const handleError = (e: Event) => {

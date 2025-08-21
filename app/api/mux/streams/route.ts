@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMuxClient } from '@/lib/mux-client'
 
+interface MuxStreamResponse {
+  id: string
+  streamKey: string
+  playbackIds: Array<{ id: string; policy: string }>
+  status: string
+  rtmpUrl: string
+  createdAt: string
+}
+
 export async function GET() {
   try {
     const mux = getMuxClient()
     
+    // Properly type the streams array as empty for now
     // In a real implementation, you'd fetch from your database or Mux API
-    // This is a simplified version for demonstration
-    const streams = [] // Fetch your streams here
+    const streams: MuxStreamResponse[] = [] // Explicitly type as MuxStreamResponse array
     
     return NextResponse.json(streams)
   } catch (error) {

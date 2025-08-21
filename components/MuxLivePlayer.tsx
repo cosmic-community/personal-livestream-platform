@@ -4,6 +4,32 @@ import { useRef, useEffect, useState } from 'react'
 import Hls from 'hls.js'
 import mux from 'mux-embed'
 
+// Create type declaration for mux-embed
+declare module 'mux-embed' {
+  interface MuxOptions {
+    debug?: boolean
+    hlsjs?: any
+    Hls?: any
+    data?: {
+      env_key?: string
+      player_name?: string
+      player_version?: string
+      player_init_time?: number
+      video_id?: string
+      video_title?: string
+      video_stream_type?: string
+      viewer_user_id?: string
+      experiment_name?: string
+      sub_property_id?: string
+    }
+  }
+
+  function monitor(video: HTMLVideoElement, options: MuxOptions): void
+  function updateData(data: any): void
+
+  export = { monitor, updateData }
+}
+
 interface MuxLivePlayerProps {
   playbackId: string
   streamTitle?: string
@@ -232,8 +258,8 @@ export default function MuxLivePlayer({
       const video = videoRef.current
       const hls = hlsRef.current
       
-      // Check if we're too far behind live edge
-      if (hls.liveSyncPosition !== undefined) {
+      // Check if we're too far behind live edge - Fixed null check
+      if (hls.liveSyncPosition !== null && hls.liveSyncPosition !== undefined) {
         const drift = hls.liveSyncPosition - video.currentTime
         if (drift > 30) { // More than 30 seconds behind
           console.log('⏩ Seeking to live edge')
