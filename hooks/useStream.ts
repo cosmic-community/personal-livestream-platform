@@ -40,8 +40,8 @@ export function useStream(config: UseStreamConfig = {}) {
       return
     }
 
-    // Create stream manager
-    if (streamManagerRef.current) {
+    // Create stream manager - Fix: Change condition from if to if not
+    if (!streamManagerRef.current) {
       streamManagerRef.current = new StreamManager({
         onStateChange: (state: BroadcasterState) => {
           // Convert BroadcasterState to StreamState

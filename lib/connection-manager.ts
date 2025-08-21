@@ -90,6 +90,14 @@ export class ConnectionManager {
 
     for (let urlAttempt = 0; urlAttempt < this.config.maxUrlAttempts; urlAttempt++) {
       const url = this.serverUrls[this.currentUrlIndex]
+      
+      // Fix: Add null check for url parameter
+      if (!url) {
+        this.log(`No URL available at index ${this.currentUrlIndex}`)
+        this.currentUrlIndex = (this.currentUrlIndex + 1) % this.serverUrls.length
+        continue
+      }
+      
       this.log(`Attempting connection to ${url} (attempt ${urlAttempt + 1})`)
 
       const success = await this.attemptConnection(url)
