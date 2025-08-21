@@ -1,6 +1,51 @@
 import { io, Socket } from 'socket.io-client'
 import { StreamType } from '@/types'
-import { STREAM_CONFIG, log } from '@/lib/stream-config'
+import { StreamConfig, log } from '@/lib/stream-config'
+
+// Get stream config
+const STREAM_CONFIG: StreamConfig = {
+  SERVER_URLS: [
+    'ws://localhost:3001',
+    'wss://streaming-server.example.com'
+  ],
+  CONNECTION: {
+    timeout: 10000,
+    maxRetries: 3,
+    maxUrlAttempts: 2,
+    reconnectBackoff: [1000, 2000, 4000, 8000],
+    transports: ['websocket'],
+    autoConnect: true,
+    forceNew: false,
+    healthCheckInterval: 30000
+  },
+  WEBRTC: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ],
+    iceCandidatePoolSize: 10,
+    bundlePolicy: 'balanced',
+    rtcpMuxPolicy: 'require'
+  },
+  FALLBACK: {
+    enableFallbackMode: true,
+    enableBroadcastChannel: true,
+    maxFallbackDuration: 300000,
+    fallbackRetryInterval: 5000
+  },
+  MEDIA: {
+    video: {
+      width: { min: 640, ideal: 1280, max: 1920 },
+      height: { min: 480, ideal: 720, max: 1080 },
+      frameRate: { ideal: 30, max: 60 }
+    },
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    }
+  }
+}
 
 // Payload interfaces
 interface StreamStartedEvent {
@@ -703,6 +748,23 @@ class SocketManager {
     this.on('viewer-count', callback)
   }
 
+  // Add missing methods for StreamManager
+  onViewerJoined(callback: (data: { socketId: string }) => void): void {
+    this.on('viewer-joined', callback)
+  }
+
+  onViewerLeft(callback: (data: { socketId: string }) => void): void {
+    this.on('viewer-left', callback)
+  }
+
+  onAnswer(callback: (data: { answer: RTCSessionDescriptionInit; socketId: string }) => void): void {
+    this.on('answer', callback)
+  }
+
+  onIceCandidate(callback: (data: { candidate: RTCIceCandidateInit; socketId: string }) => void): void {
+    this.on('ice-candidate', callback)
+  }
+
   // WebRTC signaling
   sendOffer(offer: RTCSessionDescriptionInit, targetId?: string): void {
     this.emit('stream-offer', { offer, targetId })
@@ -722,10 +784,6 @@ class SocketManager {
 
   onStreamAnswer(callback: (data: any) => void): void {
     this.on('stream-answer', callback)
-  }
-
-  onIceCandidate(callback: (data: any) => void): void {
-    this.on('ice-candidate', callback)
   }
 }
 

@@ -82,7 +82,13 @@ export interface StreamState {
 
 export interface BroadcasterState {
   isStreaming: boolean
+  isLive: boolean
+  isConnecting: boolean
   streamType: StreamType
+  webcamEnabled: boolean
+  screenEnabled: boolean
+  viewerCount: number
+  streamQuality: string
   currentSession?: StreamSession
   mediaStream?: MediaStream
   peerConnections: Map<string, RTCPeerConnection>

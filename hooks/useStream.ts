@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { StreamState, StreamType, StreamError } from '@/types'
+import { StreamState, StreamType, StreamError, BroadcasterState } from '@/types'
 import { StreamManager } from '@/lib/stream-manager'
 import { checkWebRTCSupport } from '@/lib/webrtc'
 import { socketManager } from '@/lib/socket'
@@ -7,7 +7,8 @@ import { socketManager } from '@/lib/socket'
 interface UseStreamConfig {
   autoConnect?: boolean
   onError?: (error: StreamError) => void
-  onStateChange?: (state: StreamState) => void
+  onStateChange?: (state: BroadcasterState) => void
+  onViewerCountChange?: (count: number) => void
 }
 
 export function useStream(config: UseStreamConfig = {}) {
@@ -41,16 +42,28 @@ export function useStream(config: UseStreamConfig = {}) {
 
     // Create stream manager
     streamManagerRef.current = new StreamManager({
-      onStateChange: (state) => {
-        setStreamState(state)
+      onStateChange: (state: BroadcasterState) => {
+        // Convert BroadcasterState to StreamState
+        const streamState: StreamState = {
+          isLive: state.isLive,
+          isConnecting: state.isConnecting,
+          streamType: state.streamType,
+          webcamEnabled: state.webcamEnabled,
+          screenEnabled: state.screenEnabled,
+          viewerCount: state.viewerCount,
+          sessionId: state.currentSession?.id,
+          error: state.errors.length > 0 ? state.errors[state.errors.length - 1].message : undefined
+        }
+        setStreamState(streamState)
         config.onStateChange?.(state)
       },
-      onError: (err) => {
+      onError: (err: StreamError) => {
         setError(err)
         config.onError?.(err)
       },
-      onViewerCountChange: (count) => {
+      onViewerCountChange: (count: number) => {
         setStreamState(prev => ({ ...prev, viewerCount: count }))
+        config.onViewerCountChange?.(count)
       }
     })
 

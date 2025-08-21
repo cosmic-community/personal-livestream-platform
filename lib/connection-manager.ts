@@ -21,6 +21,21 @@ export interface ConnectionState {
   healthCheckActive: boolean
 }
 
+export interface ConnectionHealth {
+  quality: 'excellent' | 'good' | 'fair' | 'poor'
+  latency: number
+  isConnected: boolean
+  fallbackMode: boolean
+  lastChecked: string
+}
+
+export interface NetworkStats {
+  online: boolean
+  downloadSpeed: number
+  connectionType: string
+  latency: number
+}
+
 export class ConnectionManager {
   private socket: Socket | null = null
   private config: ConnectionConfig
@@ -305,6 +320,75 @@ export class ConnectionManager {
     }
   }
 
+  // Additional methods needed by useConnection hook
+  getConnectionHealth(): ConnectionHealth {
+    return {
+      quality: this.state.isConnected ? 'good' : 'poor',
+      latency: 0, // TODO: implement latency measurement
+      isConnected: this.state.isConnected,
+      fallbackMode: this.state.fallbackMode,
+      lastChecked: new Date().toISOString()
+    }
+  }
+
+  getNetworkStats(): NetworkStats {
+    return {
+      online: navigator.onLine,
+      downloadSpeed: 0, // TODO: implement speed test
+      connectionType: 'unknown',
+      latency: 0
+    }
+  }
+
+  getConnectionRecommendations(): string[] {
+    const recommendations: string[] = []
+    if (!this.state.isConnected) {
+      recommendations.push('Check your internet connection')
+    }
+    if (this.state.fallbackMode) {
+      recommendations.push('Consider refreshing the page to retry connection')
+    }
+    return recommendations
+  }
+
+  async forceHealthCheck(): Promise<void> {
+    // Force a health check
+    if (this.socket?.connected) {
+      this.socket.emit('ping', Date.now())
+    }
+  }
+
+  isMethodAvailable(method: string): boolean {
+    // Check if a connection method is available
+    switch (method) {
+      case 'websocket':
+        return typeof WebSocket !== 'undefined'
+      case 'webrtc':
+        return typeof RTCPeerConnection !== 'undefined'
+      default:
+        return false
+    }
+  }
+
+  getBestConnectionMethod(): string {
+    if (this.isMethodAvailable('websocket')) return 'websocket'
+    if (this.isMethodAvailable('webrtc')) return 'webrtc'
+    return 'fallback'
+  }
+
+  broadcastMessage(type: string, data: any): void {
+    // Broadcast message to other tabs via BroadcastChannel if available
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        const channel = new BroadcastChannel('livestream-connection')
+        channel.postMessage({ type, data })
+        channel.close()
+      } catch (error) {
+        console.warn('Failed to broadcast message:', error)
+      }
+    }
+  }
+
   // Getters
   isConnected(): boolean {
     return this.state.isConnected
@@ -328,13 +412,6 @@ export class ConnectionManager {
 }
 
 // Export singleton instance
-let connectionManager: ConnectionManager | null = null
-
-export function getConnectionManager(): ConnectionManager {
-  if (!connectionManager) {
-    connectionManager = new ConnectionManager()
-  }
-  return connectionManager
-}
+export const connectionManager = new ConnectionManager()
 
 export default ConnectionManager

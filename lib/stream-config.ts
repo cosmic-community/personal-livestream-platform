@@ -18,6 +18,7 @@ export interface StreamConfig {
   }
   FALLBACK: {
     enableFallbackMode: boolean
+    enableBroadcastChannel?: boolean
     maxFallbackDuration: number
     fallbackRetryInterval: number
   }
@@ -35,7 +36,7 @@ export interface StreamConfig {
   }
 }
 
-export const defaultStreamConfig: StreamConfig = {
+export const STREAM_CONFIG: StreamConfig = {
   SERVER_URLS: [
     'ws://localhost:3001',
     'wss://streaming-server.example.com'
@@ -61,6 +62,7 @@ export const defaultStreamConfig: StreamConfig = {
   },
   FALLBACK: {
     enableFallbackMode: true,
+    enableBroadcastChannel: true,
     maxFallbackDuration: 300000, // 5 minutes
     fallbackRetryInterval: 5000
   },
@@ -78,16 +80,18 @@ export const defaultStreamConfig: StreamConfig = {
   }
 }
 
+export const StreamConfig = STREAM_CONFIG
+
 export function getStreamConfig(): StreamConfig {
-  return { ...defaultStreamConfig }
+  return { ...STREAM_CONFIG }
 }
 
 export function getWebRTCConfig(): RTCConfiguration {
   return {
-    iceServers: defaultStreamConfig.WEBRTC.iceServers,
-    iceCandidatePoolSize: defaultStreamConfig.WEBRTC.iceCandidatePoolSize,
-    bundlePolicy: defaultStreamConfig.WEBRTC.bundlePolicy,
-    rtcpMuxPolicy: defaultStreamConfig.WEBRTC.rtcpMuxPolicy
+    iceServers: STREAM_CONFIG.WEBRTC.iceServers,
+    iceCandidatePoolSize: STREAM_CONFIG.WEBRTC.iceCandidatePoolSize,
+    bundlePolicy: STREAM_CONFIG.WEBRTC.bundlePolicy,
+    rtcpMuxPolicy: STREAM_CONFIG.WEBRTC.rtcpMuxPolicy
   }
 }
 
@@ -108,6 +112,23 @@ export function createStreamError(
     message,
     timestamp: new Date().toISOString(),
     details
+  }
+}
+
+export function log(level: 'info' | 'warn' | 'error', message: string, data?: any): void {
+  const timestamp = new Date().toISOString()
+  const prefix = `[StreamConfig ${timestamp}]`
+  
+  switch (level) {
+    case 'info':
+      console.log(`${prefix} ${message}`, data || '')
+      break
+    case 'warn':
+      console.warn(`${prefix} ${message}`, data || '')
+      break
+    case 'error':
+      console.error(`${prefix} ${message}`, data || '')
+      break
   }
 }
 

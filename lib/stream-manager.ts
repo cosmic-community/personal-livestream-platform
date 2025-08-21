@@ -15,23 +15,39 @@ interface StreamManagerConfig {
   debug?: boolean
   videoConstraints?: MediaStreamConstraints['video']
   audioConstraints?: MediaStreamConstraints['audio']
+  onStateChange?: (state: BroadcasterState) => void
+  onError?: (error: StreamError) => void
+  onViewerCountChange?: (count: number) => void
 }
 
 export class StreamManager {
   private config: StreamManagerConfig
   private state: BroadcasterState = {
+    isStreaming: false,
     isLive: false,
     isConnecting: false,
     streamType: 'webcam',
     webcamEnabled: false,
     screenEnabled: false,
     viewerCount: 0,
-    streamQuality: 'auto'
+    streamQuality: 'auto',
+    peerConnections: new Map<string, RTCPeerConnection>(),
+    stats: {
+      bytesReceived: 0,
+      bytesSent: 0,
+      packetsLost: 0,
+      jitter: 0,
+      rtt: 0,
+      bandwidth: 0,
+      quality: 'poor',
+      viewerCount: 0,
+      duration: 0
+    },
+    errors: []
   }
 
   private localStreams: Map<StreamType, MediaStream> = new Map()
   private combinedStream: MediaStream | null = null
-  private peerConnections: Map<string, RTCPeerConnection> = new Map()
   private qualityMonitors: Map<string, () => void> = new Map()
 
   // Event handlers
@@ -50,8 +66,14 @@ export class StreamManager {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true
-      }
+      },
+      onStateChange: config.onStateChange,
+      onError: config.onError,
+      onViewerCountChange: config.onViewerCountChange
     }
+
+    this.onStateChangeCb = config.onStateChange
+    this.onErrorCb = config.onError
 
     this.setupSocketListeners()
   }
@@ -64,10 +86,12 @@ export class StreamManager {
 
   private emitStateChange(): void {
     this.onStateChangeCb?.(this.state)
+    this.config.onStateChange?.(this.state)
   }
 
   private emitError(error: StreamError): void {
     this.onErrorCb?.(error)
+    this.config.onError?.(error)
   }
 
   private setupSocketListeners(): void {
@@ -87,7 +111,7 @@ export class StreamManager {
     })
 
     socketManager.onIceCandidate(async (data: { candidate: RTCIceCandidateInit; socketId: string }) => {
-      const peerConnection = this.peerConnections.get(data.socketId)
+      const peerConnection = this.state.peerConnections.get(data.socketId)
       if (peerConnection) {
         await handleIceCandidate(peerConnection, data.candidate)
       }
@@ -95,6 +119,7 @@ export class StreamManager {
 
     socketManager.onViewerCount((count: number) => {
       this.state.viewerCount = count
+      this.config.onViewerCountChange?.(count)
       this.emitStateChange()
     })
   }
@@ -158,6 +183,7 @@ export class StreamManager {
       await socketManager.startBroadcast(type)
 
       this.state.isLive = true
+      this.state.isStreaming = true
       this.state.isConnecting = false
       this.emitStateChange()
 
@@ -186,7 +212,7 @@ export class StreamManager {
       socketManager.stopBroadcast()
 
       // Close all peer connections
-      this.peerConnections.forEach((pc, socketId) => {
+      this.state.peerConnections.forEach((pc, socketId) => {
         pc.close()
         const monitor = this.qualityMonitors.get(socketId)
         if (monitor) {
@@ -194,7 +220,7 @@ export class StreamManager {
           this.qualityMonitors.delete(socketId)
         }
       })
-      this.peerConnections.clear()
+      this.state.peerConnections.clear()
 
       // Stop all local streams
       this.localStreams.forEach((stream) => {
@@ -209,13 +235,27 @@ export class StreamManager {
 
       // Reset state
       this.state = {
+        isStreaming: false,
         isLive: false,
         isConnecting: false,
         streamType: 'webcam',
         webcamEnabled: false,
         screenEnabled: false,
         viewerCount: 0,
-        streamQuality: 'auto'
+        streamQuality: 'auto',
+        peerConnections: new Map<string, RTCPeerConnection>(),
+        stats: {
+          bytesReceived: 0,
+          bytesSent: 0,
+          packetsLost: 0,
+          jitter: 0,
+          rtt: 0,
+          bandwidth: 0,
+          quality: 'poor',
+          viewerCount: 0,
+          duration: 0
+        },
+        errors: []
       }
 
       this.emitStateChange()
@@ -292,7 +332,7 @@ export class StreamManager {
       socketManager.sendOffer(offer, socketId)
 
       // Store peer connection
-      this.peerConnections.set(socketId, peerConnection)
+      this.state.peerConnections.set(socketId, peerConnection)
 
       // Start quality monitoring
       const stopMonitoring = monitorConnectionQuality(peerConnection, (stats: RTCStatsReport) => {
@@ -314,10 +354,10 @@ export class StreamManager {
   private handleViewerDisconnection(socketId: string): void {
     this.log('Handling viewer disconnection:', socketId)
 
-    const peerConnection = this.peerConnections.get(socketId)
+    const peerConnection = this.state.peerConnections.get(socketId)
     if (peerConnection) {
       peerConnection.close()
-      this.peerConnections.delete(socketId)
+      this.state.peerConnections.delete(socketId)
     }
 
     const monitor = this.qualityMonitors.get(socketId)
@@ -329,7 +369,7 @@ export class StreamManager {
 
   private async handleViewerAnswer(socketId: string, answer: RTCSessionDescriptionInit): Promise<void> {
     try {
-      const peerConnection = this.peerConnections.get(socketId)
+      const peerConnection = this.state.peerConnections.get(socketId)
       if (!peerConnection) {
         throw new Error('No peer connection found for viewer')
       }
@@ -366,7 +406,74 @@ export class StreamManager {
     })
   }
 
+  // Add missing methods for useStream hook
+  async toggleWebcam(): Promise<void> {
+    try {
+      if (this.state.webcamEnabled) {
+        // Turn off webcam
+        const webcamStream = this.localStreams.get('webcam')
+        if (webcamStream) {
+          stopMediaStream(webcamStream)
+          this.localStreams.delete('webcam')
+        }
+        this.state.webcamEnabled = false
+      } else {
+        // Turn on webcam
+        const webcamStream = await this.getWebcamStream()
+        if (webcamStream) {
+          this.localStreams.set('webcam', webcamStream)
+          this.state.webcamEnabled = true
+        }
+      }
+      this.emitStateChange()
+    } catch (error) {
+      this.emitError({
+        code: 'WEBCAM_TOGGLE_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to toggle webcam',
+        timestamp: new Date().toISOString()
+      })
+      throw error
+    }
+  }
+
+  async toggleScreen(): Promise<void> {
+    try {
+      if (this.state.screenEnabled) {
+        // Turn off screen share
+        const screenStream = this.localStreams.get('screen')
+        if (screenStream) {
+          stopMediaStream(screenStream)
+          this.localStreams.delete('screen')
+        }
+        this.state.screenEnabled = false
+      } else {
+        // Turn on screen share
+        const screenStream = await this.getScreenStream()
+        if (screenStream) {
+          this.localStreams.set('screen', screenStream)
+          this.state.screenEnabled = true
+        }
+      }
+      this.emitStateChange()
+    } catch (error) {
+      this.emitError({
+        code: 'SCREEN_TOGGLE_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to toggle screen share',
+        timestamp: new Date().toISOString()
+      })
+      throw error
+    }
+  }
+
   // Public methods
+  get stream(): MediaStream | null {
+    return this.combinedStream
+  }
+
+  get statistics(): any {
+    return this.state.stats
+  }
+
   getCurrentStream(): MediaStream | null {
     return this.combinedStream
   }
@@ -384,7 +491,7 @@ export class StreamManager {
   }
 
   getConnectedViewers(): string[] {
-    return Array.from(this.peerConnections.keys())
+    return Array.from(this.state.peerConnections.keys())
   }
 
   // Event handlers

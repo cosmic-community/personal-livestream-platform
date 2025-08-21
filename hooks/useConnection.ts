@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { connectionManager, ConnectionHealth, NetworkStats } from '@/lib/connection-manager'
+import { ConnectionManager, ConnectionHealth, NetworkStats } from '@/lib/connection-manager'
 import { socketManager } from '@/lib/socket'
+
+const connectionManager = new ConnectionManager()
 
 interface ConnectionInfo {
   health: ConnectionHealth | null
