@@ -166,12 +166,18 @@ export function useStream(config: UseStreamConfig = {}) {
 
   // Get current stream - FIXED: Add proper null check for streamManagerRef
   const getCurrentStream = useCallback(() => {
-    return streamManagerRef.current?.stream ?? null
+    if (!streamManagerRef.current) {
+      return null
+    }
+    return streamManagerRef.current.stream ?? null
   }, [])
 
   // Get stream statistics - FIXED: Add proper null check for streamManagerRef
   const getStatistics = useCallback(() => {
-    return streamManagerRef.current?.statistics ?? null
+    if (!streamManagerRef.current) {
+      return null
+    }
+    return streamManagerRef.current.statistics ?? null
   }, [])
 
   // Check if streaming is available
