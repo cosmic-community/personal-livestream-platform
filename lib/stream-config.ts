@@ -163,7 +163,7 @@ export async function testAllConnectionMethods(): Promise<{
 
   // Test Media Devices
   try {
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
       results.mediaDevices = true
     }
   } catch (error) {

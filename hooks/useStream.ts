@@ -41,31 +41,33 @@ export function useStream(config: UseStreamConfig = {}) {
     }
 
     // Create stream manager
-    streamManagerRef.current = new StreamManager({
-      onStateChange: (state: BroadcasterState) => {
-        // Convert BroadcasterState to StreamState
-        const streamState: StreamState = {
-          isLive: state.isLive,
-          isConnecting: state.isConnecting,
-          streamType: state.streamType,
-          webcamEnabled: state.webcamEnabled,
-          screenEnabled: state.screenEnabled,
-          viewerCount: state.viewerCount,
-          sessionId: state.currentSession?.id,
-          error: state.errors.length > 0 ? state.errors[state.errors.length - 1].message : undefined
+    if (streamManagerRef.current) {
+      streamManagerRef.current = new StreamManager({
+        onStateChange: (state: BroadcasterState) => {
+          // Convert BroadcasterState to StreamState
+          const streamState: StreamState = {
+            isLive: state.isLive,
+            isConnecting: state.isConnecting,
+            streamType: state.streamType,
+            webcamEnabled: state.webcamEnabled,
+            screenEnabled: state.screenEnabled,
+            viewerCount: state.viewerCount,
+            sessionId: state.currentSession?.id,
+            error: state.errors.length > 0 ? state.errors[state.errors.length - 1].message : undefined
+          }
+          setStreamState(streamState)
+          config.onStateChange?.(state)
+        },
+        onError: (err: StreamError) => {
+          setError(err)
+          config.onError?.(err)
+        },
+        onViewerCountChange: (count: number) => {
+          setStreamState(prev => ({ ...prev, viewerCount: count }))
+          config.onViewerCountChange?.(count)
         }
-        setStreamState(streamState)
-        config.onStateChange?.(state)
-      },
-      onError: (err: StreamError) => {
-        setError(err)
-        config.onError?.(err)
-      },
-      onViewerCountChange: (count: number) => {
-        setStreamState(prev => ({ ...prev, viewerCount: count }))
-        config.onViewerCountChange?.(count)
-      }
-    })
+      })
+    }
 
     // Auto-connect if enabled
     if (config.autoConnect) {
@@ -73,7 +75,9 @@ export function useStream(config: UseStreamConfig = {}) {
     }
 
     return () => {
-      streamManagerRef.current?.destroy()
+      if (streamManagerRef.current) {
+        streamManagerRef.current.destroy()
+      }
     }
   }, [config.autoConnect])
 

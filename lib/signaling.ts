@@ -65,19 +65,18 @@ class SignalingManager {
       }
     })
 
-    // ICE Candidate
-    socketManager.onIceCandidate((data: WebRTCIceCandidate) => {
-      const candidate = data
-      const from = data.from || 'unknown'
+    // ICE Candidate - Fixed parameter type handling
+    socketManager.onIceCandidate((data: { candidate: RTCIceCandidateInit; socketId: string }) => {
+      const from = data.socketId || 'unknown'
       log('info', `📥 Received ICE candidate from ${from}`)
       
-      if (this.config.onIceCandidate && candidate) {
+      if (this.config.onIceCandidate && data.candidate) {
         // Create proper RTCIceCandidateInit from the data
         const iceCandidate: RTCIceCandidateInit = {
-          candidate: typeof data === 'string' ? data : data.candidate,
-          sdpMLineIndex: data.sdpMLineIndex,
-          sdpMid: data.sdpMid,
-          usernameFragment: data.usernameFragment
+          candidate: typeof data.candidate === 'string' ? data.candidate : data.candidate.candidate,
+          sdpMLineIndex: data.candidate.sdpMLineIndex,
+          sdpMid: data.candidate.sdpMid,
+          usernameFragment: data.candidate.usernameFragment
         }
         this.config.onIceCandidate(iceCandidate, from)
       }

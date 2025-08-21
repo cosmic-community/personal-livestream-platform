@@ -101,9 +101,9 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
       await handleStreamOffer(offer)
     })
 
-    socketManager.onIceCandidate(async (candidate: RTCIceCandidateInit) => {
-      if (peerConnectionRef.current) {
-        await handleIceCandidate(peerConnectionRef.current, candidate)
+    socketManager.onIceCandidate(async (data: { candidate: RTCIceCandidateInit; socketId: string }) => {
+      if (peerConnectionRef.current && data.candidate) {
+        await handleIceCandidate(peerConnectionRef.current, data.candidate)
       }
     })
 
@@ -191,7 +191,10 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
       const peerConnection = createPeerConnection(
         (candidate: RTCIceCandidate) => {
           console.log('🧊 Sending ICE candidate')
-          socketManager.sendIceCandidate(candidate, socketManager.getSocketId())
+          const socketId = socketManager.getSocketId()
+          if (socketId) {
+            socketManager.sendIceCandidate(candidate, socketId)
+          }
         },
         (state: RTCPeerConnectionState) => {
           console.log('🔗 Connection state changed:', state)
@@ -263,7 +266,10 @@ export default function StreamViewer({ initialSession }: StreamViewerProps) {
       const answer = await createAnswer(peerConnection, offer)
       
       // Send answer back
-      socketManager.sendAnswer(answer, socketManager.getSocketId() || '')
+      const socketId = socketManager.getSocketId()
+      if (socketId) {
+        socketManager.sendAnswer(answer, socketId)
+      }
       
       console.log('✅ Stream offer processed successfully')
 
