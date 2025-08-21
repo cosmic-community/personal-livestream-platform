@@ -160,14 +160,14 @@ export function useMux(): UseMuxReturn {
 
       // Set active stream if there's only one or find the most recent
       if (streamsData.length === 1) {
-        setActiveStream(streamsData[0])
+        setActiveStream(streamsData[0] ?? null)
       } else if (streamsData.length > 1 && !activeStream) {
         // Find most recently created stream
         const mostRecent = streamsData.reduce((latest, current) => 
           new Date(current.createdAt) > new Date(latest.createdAt) ? current : latest
         )
-        // Fixed: Check if mostRecent is defined before setting it
-        setActiveStream(mostRecent || null)
+        // Fixed: Ensure mostRecent is properly typed and handle the case where it might be undefined
+        setActiveStream(mostRecent ?? null)
       }
 
     } catch (err) {
