@@ -94,9 +94,10 @@ export default function SimpleDashboard() {
       setStreams(prev => prev.filter(s => s.id !== streamId))
       
       if (activeStream?.id === streamId) {
-        // Fixed: Handle possibly undefined activeStream and streams array access
+        // Fixed: Handle possibly undefined activeStream and filter operations properly
         const remainingStreams = streams.filter(s => s.id !== streamId)
-        setActiveStream(remainingStreams.length > 0 ? remainingStreams[0] : null)
+        const nextActiveStream = remainingStreams.length > 0 ? remainingStreams[0] : null
+        setActiveStream(nextActiveStream)
       }
       
     } catch (err) {
@@ -266,14 +267,14 @@ export default function SimpleDashboard() {
             {activeStream && activeStream.playbackIds && activeStream.playbackIds.length > 0 ? (
               <div className="space-y-4">
                 <MuxLivePlayer
-                  playbackId={activeStream.playbackIds[0].id}
+                  playbackId={activeStream.playbackIds[0]!.id}
                   streamTitle="Live Stream"
                   autoPlay={false}
                   muted={true}
                   className="w-full aspect-video"
                 />
                 <p className="text-sm text-gray-600">
-                  Playback ID: {activeStream.playbackIds[0].id}
+                  Playback ID: {activeStream.playbackIds[0]!.id}
                 </p>
               </div>
             ) : (

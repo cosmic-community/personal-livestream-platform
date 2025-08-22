@@ -39,7 +39,7 @@ export interface BroadcasterState extends StreamState {
   errors: StreamError[]
 }
 
-// Added missing StreamStats interface
+// Added missing StreamStats interface  
 export interface StreamStats {
   totalBytesReceived: number
   totalBytesSent: number
