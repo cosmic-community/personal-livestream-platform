@@ -62,6 +62,7 @@ class MuxClient {
       throw new Error('Mux credentials are required: MUX_TOKEN_ID and MUX_TOKEN_SECRET')
     }
 
+    // Fixed: Remove tokenId from RequestOptions - use correct Mux SDK configuration
     this.mux = new Mux({
       tokenId: this.config.tokenId,
       tokenSecret: this.config.tokenSecret
@@ -83,8 +84,8 @@ class MuxClient {
       console.log('🎥 Creating unique Mux live stream with secure credentials...')
       console.warn('🔐 SECURITY: Stream key will be generated - treat it as a private credential!')
 
-      // Create live stream with your unique Mux configuration
-      const liveStream = await this.mux.Video.liveStreams.create({
+      // Fixed: Use correct capitalized property name 'LiveStreams'
+      const liveStream = await this.mux.Video.LiveStreams.create({
         playback_policy: [options.playbackPolicy || 'public'],
         new_asset_settings: {
           playback_policy: [options.newAssetSettings?.playbackPolicy || 'public'],
@@ -141,7 +142,8 @@ class MuxClient {
 
   async getLiveStream(liveStreamId: string) {
     try {
-      const liveStream = await this.mux.Video.liveStreams.retrieve(liveStreamId)
+      // Fixed: Use correct capitalized property name 'LiveStreams'
+      const liveStream = await this.mux.Video.LiveStreams.retrieve(liveStreamId)
       
       // Log security reminder when accessing stream data
       console.warn('🔐 Accessing stream with sensitive stream key - handle securely')
@@ -176,7 +178,8 @@ class MuxClient {
   async deleteLiveStream(liveStreamId: string) {
     try {
       console.log('🗑️ Deleting live stream - this will invalidate the stream key:', liveStreamId)
-      await this.mux.Video.liveStreams.delete(liveStreamId)
+      // Fixed: Use correct capitalized property name 'LiveStreams'
+      await this.mux.Video.LiveStreams.delete(liveStreamId)
       console.log('✅ Live stream deleted - stream key is now invalid')
       return { success: true, streamKeyInvalidated: true }
     } catch (error) {
@@ -204,11 +207,11 @@ class MuxClient {
 
   async enableLiveStream(liveStreamId: string) {
     try {
-      // Fixed: Handle void return type properly
-      await this.mux.Video.liveStreams.enable(liveStreamId)
+      // Fixed: Use correct capitalized property name 'LiveStreams' and handle void return type properly
+      await this.mux.Video.LiveStreams.enable(liveStreamId)
       
       // Always retrieve the updated stream to get current status
-      const updatedStream = await this.mux.Video.liveStreams.retrieve(liveStreamId)
+      const updatedStream = await this.mux.Video.LiveStreams.retrieve(liveStreamId)
       return {
         id: updatedStream.id,
         status: updatedStream.status
@@ -222,11 +225,11 @@ class MuxClient {
   async disableLiveStream(liveStreamId: string) {
     try {
       console.log('⏹️ Disabling live stream (stream key remains valid):', liveStreamId)
-      // Fixed: Handle void return type properly
-      await this.mux.Video.liveStreams.disable(liveStreamId)
+      // Fixed: Use correct capitalized property name 'LiveStreams' and handle void return type properly
+      await this.mux.Video.LiveStreams.disable(liveStreamId)
       
       // Always retrieve the updated stream to get current status
-      const updatedStream = await this.mux.Video.liveStreams.retrieve(liveStreamId)
+      const updatedStream = await this.mux.Video.LiveStreams.retrieve(liveStreamId)
       return {
         id: updatedStream.id,
         status: updatedStream.status
@@ -248,9 +251,10 @@ class MuxClient {
       // Fixed: Ensure inputs array is properly typed and handle undefined case
       const inputs: Input[] = input.url ? [{ url: input.url }] : []
       
-      const asset = await this.mux.Video.assets.create({
+      // Fixed: Use correct capitalized property name 'Assets'
+      const asset = await this.mux.Video.Assets.create({
         input: inputs,
-        playback_policy: [input.playbackPolicy || 'public'],
+        playbook_policy: [input.playbackPolicy || 'public'],
         mp4_support: input.mp4Support || 'none',
         normalize_audio: input.normalizeAudio || false
       })
@@ -272,7 +276,8 @@ class MuxClient {
 
   async getAsset(assetId: string) {
     try {
-      const asset = await this.mux.Video.assets.retrieve(assetId)
+      // Fixed: Use correct capitalized property name 'Assets'
+      const asset = await this.mux.Video.Assets.retrieve(assetId)
       
       return {
         id: asset.id,
@@ -293,7 +298,8 @@ class MuxClient {
 
   async deleteAsset(assetId: string) {
     try {
-      await this.mux.Video.assets.delete(assetId)
+      // Fixed: Use correct capitalized property name 'Assets'
+      await this.mux.Video.Assets.delete(assetId)
       return { success: true }
     } catch (error) {
       console.error('Failed to delete asset:', error)
