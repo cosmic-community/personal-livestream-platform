@@ -7,7 +7,7 @@ interface MuxStreamConfig {
   reconnectWindow?: number
   newAssetSettings?: {
     playbackPolicy?: 'public' | 'signed'
-    mp4Support?: 'none' | 'capped-1080p' | 'standard'
+    mp4Support?: 'none' | 'standard' // Fixed: Remove invalid option
     normalizeAudio?: boolean
   }
 }
@@ -44,7 +44,7 @@ export class MuxStreamingService {
       reconnectWindow: config.reconnectWindow || 60,
       newAssetSettings: config.newAssetSettings || {
         playbackPolicy: 'public',
-        mp4Support: 'capped-1080p',
+        mp4Support: 'standard', // Fixed: Use valid option
         normalizeAudio: true
       }
     }
@@ -61,13 +61,14 @@ export class MuxStreamingService {
         newAssetSettings: this.config.newAssetSettings
       })
 
+      // Fixed: Add proper null checks for all potentially undefined values
       const session: MuxStreamSession = {
-        id: liveStream.id,
-        streamKey: liveStream.streamKey,
+        id: liveStream.id || '',
+        streamKey: liveStream.streamKey || '',
         playbackIds: liveStream.playbackIds || [],
-        status: liveStream.status,
-        rtmpUrl: liveStream.rtmpUrl,
-        createdAt: liveStream.createdAt,
+        status: liveStream.status || 'idle',
+        rtmpUrl: liveStream.rtmpUrl || '',
+        createdAt: liveStream.createdAt || new Date().toISOString(),
         reducedLatency: liveStream.reducedLatency,
         reconnectWindow: liveStream.reconnectWindow
       }
@@ -112,13 +113,14 @@ export class MuxStreamingService {
     try {
       const liveStream = await this.muxClient.getLiveStream(targetId)
       
+      // Fixed: Add proper null checks for all potentially undefined values
       const session: MuxStreamSession = {
-        id: liveStream.id,
-        streamKey: liveStream.streamKey,
+        id: liveStream.id || '',
+        streamKey: liveStream.streamKey || '',
         playbackIds: liveStream.playbackIds || [],
-        status: liveStream.status,
-        rtmpUrl: liveStream.rtmpUrl,
-        createdAt: liveStream.createdAt,
+        status: liveStream.status || 'idle',
+        rtmpUrl: liveStream.rtmpUrl || '',
+        createdAt: liveStream.createdAt || new Date().toISOString(),
         reducedLatency: liveStream.reducedLatency,
         reconnectWindow: liveStream.reconnectWindow
       }
