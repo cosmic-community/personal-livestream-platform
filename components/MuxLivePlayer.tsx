@@ -3,18 +3,6 @@
 import { useEffect, useRef, useState } from 'react'
 import MuxPlayer from '@mux/mux-player-react'
 
-// Define the MuxPlayerElement type to match the Mux player expectations
-interface MuxPlayerElement extends HTMLElement {
-  // Add properties that exist on MuxPlayerElement
-  currentTime?: number
-  duration?: number
-  paused?: boolean
-  play?: () => Promise<void>
-  pause?: () => void
-  muted?: boolean
-  volume?: number
-}
-
 interface MuxLivePlayerProps {
   playbackId: string
   streamTitle?: string
@@ -42,8 +30,8 @@ export default function MuxLivePlayer({
   onError,
   className = ''
 }: MuxLivePlayerProps) {
-  // Fix: Change ref type from HTMLVideoElement to MuxPlayerElement
-  const playerRef = useRef<MuxPlayerElement>(null)
+  // Fix: Use any type for ref to avoid type conflicts with Mux player internal types
+  const playerRef = useRef<any>(null)
   const [isLive, setIsLive] = useState(false)
   const [viewerCount, setViewerCount] = useState(0)
   const [error, setError] = useState<string>('')
