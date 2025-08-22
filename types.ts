@@ -18,7 +18,6 @@ export interface StreamState {
   errors?: StreamError[]
 }
 
-// Fixed: Remove 'combined' type to match interface expectations
 export type StreamType = 'webcam' | 'screen' | 'both'
 
 export interface StreamError {
@@ -26,10 +25,9 @@ export interface StreamError {
   message: string
   timestamp: string
   details?: any
-  context?: any // Added missing context property
+  context?: any
 }
 
-// Added missing BroadcasterState interface
 export interface BroadcasterState extends StreamState {
   isStreaming: boolean
   streamQuality: string
@@ -40,7 +38,6 @@ export interface BroadcasterState extends StreamState {
   errors: StreamError[]
 }
 
-// Added missing StreamStats interface  
 export interface StreamStats {
   totalBytesReceived: number
   totalBytesSent: number
@@ -52,7 +49,6 @@ export interface StreamStats {
   latency: number
 }
 
-// Fixed StreamStatsProps interface to include stats property
 export interface StreamStatsProps {
   session: StreamSession | null
   isLive: boolean
@@ -60,7 +56,6 @@ export interface StreamStatsProps {
   stats?: StreamStats
 }
 
-// Added missing ViewerState interface
 export interface ViewerState {
   isConnected: boolean
   isConnecting: boolean
@@ -70,7 +65,6 @@ export interface ViewerState {
   error?: string
 }
 
-// Added missing WebRTC types
 export interface WebRTCOffer {
   offer: RTCSessionDescriptionInit
   from?: string
@@ -98,6 +92,22 @@ export function createStreamState(overrides?: Partial<StreamState>): StreamState
     screenEnabled: false,
     viewerCount: 0,
     lastUpdated: new Date().toISOString(),
+    isStreaming: false,
+    streamQuality: 'medium',
+    currentSession: null,
+    mediaStream: null,
+    peerConnections: new Map<string, RTCPeerConnection>(),
+    stats: {
+      totalBytesReceived: 0,
+      totalBytesSent: 0,
+      packetLoss: 0,
+      connectionQuality: 'good',
+      averageBitrate: 0,
+      frameRate: 0,
+      resolution: '720p',
+      latency: 0
+    },
+    errors: [],
     ...overrides
   }
 }
