@@ -18,7 +18,8 @@ export interface StreamState {
   errors?: StreamError[]
 }
 
-export type StreamType = 'webcam' | 'screen' | 'both' | 'combined'
+// Fixed: Remove 'combined' type to match interface expectations
+export type StreamType = 'webcam' | 'screen' | 'both'
 
 export interface StreamError {
   code: string

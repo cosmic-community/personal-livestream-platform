@@ -1,350 +1,300 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import MuxLivePlayer from './MuxLivePlayer'
-
-interface Stream {
-  id: string
-  streamKey: string
-  playbackIds: Array<{ id: string; policy: string }>
-  status: string
-  rtmpUrl: string
-  createdAt: string
-}
+import { StreamingCore } from '@/lib/streaming-core'
+import { StreamState, StreamType, StreamError, createStreamState } from '@/types'
 
 export default function SimpleDashboard() {
-  const [streams, setStreams] = useState<Stream[]>([])
-  const [activeStream, setActiveStream] = useState<Stream | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [showStreamKey, setShowStreamKey] = useState(false)
+  const [streamState, setStreamState] = useState<StreamState>(() => createStreamState({
+    isLive: false,
+    isConnecting: false,
+    streamType: 'webcam',
+    webcamEnabled: false,
+    screenEnabled: false,
+    viewerCount: 0
+  }))
+  
+  const [error, setError] = useState<StreamError | null>(null)
+  const [streamingCore] = useState(() => new StreamingCore({ debug: true }))
+  const [isInitialized, setIsInitialized] = useState(false)
 
   useEffect(() => {
-    loadStreams()
-  }, [])
+    const initialize = async () => {
+      try {
+        const isSupported = await streamingCore.initialize()
+        if (!isSupported) {
+          throw new Error('WebRTC not supported in this browser')
+        }
 
-  const loadStreams = async () => {
-    setIsLoading(true)
-    setError(null)
-    
-    try {
-      const response = await fetch('/api/mux/streams')
-      if (!response.ok) {
-        throw new Error('Failed to load streams')
-      }
-      
-      const streamsData = await response.json()
-      setStreams(streamsData)
-      
-      if (streamsData.length > 0) {
-        setActiveStream(streamsData[0])
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load streams')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const createStream = async () => {
-    setIsLoading(true)
-    setError(null)
-    
-    try {
-      const response = await fetch('/api/mux/streams', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          playbackPolicy: 'public',
-          reducedLatency: true
+        // Set up event listeners
+        streamingCore.onStateChange((state: StreamState) => {
+          // Fixed: Ensure proper type handling for setState
+          setStreamState(prevState => ({
+            ...prevState,
+            ...state
+          }))
         })
-      })
 
-      if (!response.ok) {
-        throw new Error('Failed to create stream')
+        streamingCore.onError((err: StreamError) => {
+          setError(err)
+        })
+
+        // Connect to signaling server
+        await streamingCore.connect()
+        setIsInitialized(true)
+
+      } catch (err) {
+        setError({
+          code: 'INIT_FAILED',
+          message: err instanceof Error ? err.message : 'Failed to initialize',
+          timestamp: new Date().toISOString()
+        })
       }
+    }
 
-      const newStream = await response.json()
-      setStreams(prev => [newStream, ...prev])
-      setActiveStream(newStream)
-      
+    initialize()
+
+    return () => {
+      streamingCore.destroy()
+    }
+  }, [streamingCore])
+
+  const handleStartStream = async (type: StreamType) => {
+    try {
+      setError(null)
+      await streamingCore.startStream(type)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create stream')
-    } finally {
-      setIsLoading(false)
+      setError({
+        code: 'STREAM_START_FAILED',
+        message: err instanceof Error ? err.message : 'Failed to start stream',
+        timestamp: new Date().toISOString()
+      })
     }
   }
 
-  const deleteStream = async (streamId: string) => {
-    if (!confirm('Are you sure you want to delete this stream?')) {
-      return
-    }
-
+  const handleStopStream = async () => {
     try {
-      const response = await fetch(`/api/mux/streams/${streamId}`, {
-        method: 'DELETE'
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to delete stream')
-      }
-
-      setStreams(prev => prev.filter(s => s.id !== streamId))
-      
-      if (activeStream?.id === streamId) {
-        // Fixed: Handle possibly undefined activeStream and filter operations properly
-        const remainingStreams = streams.filter(s => s.id !== streamId)
-        const nextActiveStream = remainingStreams.length > 0 ? remainingStreams[0] : null
-        setActiveStream(nextActiveStream)
-      }
-      
+      await streamingCore.stopStream()
+      setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete stream')
+      setError({
+        code: 'STREAM_STOP_FAILED',
+        message: err instanceof Error ? err.message : 'Failed to stop stream',
+        timestamp: new Date().toISOString()
+      })
     }
   }
 
-  const copyToClipboard = async (text: string) => {
+  const handleToggleWebcam = async () => {
     try {
-      await navigator.clipboard.writeText(text)
-      alert('Copied to clipboard!')
+      await streamingCore.toggleWebcam()
     } catch (err) {
-      console.error('Failed to copy:', err)
+      setError({
+        code: 'WEBCAM_TOGGLE_FAILED',
+        message: err instanceof Error ? err.message : 'Failed to toggle webcam',
+        timestamp: new Date().toISOString()
+      })
     }
+  }
+
+  const handleToggleScreen = async () => {
+    try {
+      await streamingCore.toggleScreen()
+    } catch (err) {
+      setError({
+        code: 'SCREEN_TOGGLE_FAILED',
+        message: err instanceof Error ? err.message : 'Failed to toggle screen share',
+        timestamp: new Date().toISOString()
+      })
+    }
+  }
+
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Initializing streaming...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Live Streaming Dashboard</h1>
-          <p className="text-gray-600 mt-1">Create and manage your live streams</p>
-        </div>
-        <button
-          onClick={createStream}
-          disabled={isLoading}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isLoading ? 'Creating...' : 'Create New Stream'}
-        </button>
-      </div>
-
-      {/* Error Display */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-center">
-            <svg className="w-5 h-5 text-red-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            <p className="text-red-800 text-sm">{error}</p>
-            <button
-              onClick={() => setError(null)}
-              className="ml-auto text-red-600 hover:text-red-800"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Stream List */}
-      {streams.length === 0 && !isLoading ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No streams yet</h3>
-          <p className="text-gray-600 mb-4">Create your first stream to get started</p>
-          <button
-            onClick={createStream}
-            disabled={isLoading}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium"
-          >
-            Create Stream
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Stream Controls */}
-          <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-            <h2 className="text-xl font-semibold mb-4">Stream Configuration</h2>
-            
-            {activeStream ? (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Stream Status
-                  </label>
-                  <div className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${
-                    activeStream.status === 'active' 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {activeStream.status}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    RTMP Server
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value="rtmps://global-live.mux.com:443/live"
-                      readOnly
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm"
-                    />
-                    <button
-                      onClick={() => copyToClipboard("rtmps://global-live.mux.com:443/live")}
-                      className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Stream Key
-                    <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded">Private</span>
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type={showStreamKey ? "text" : "password"}
-                      value={activeStream.streamKey}
-                      readOnly
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm font-mono"
-                    />
-                    <button
-                      onClick={() => setShowStreamKey(!showStreamKey)}
-                      className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm"
-                    >
-                      {showStreamKey ? 'Hide' : 'Show'}
-                    </button>
-                    <button
-                      onClick={() => copyToClipboard(activeStream.streamKey)}
-                      className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    ⚠️ Keep this key private - anyone with it can stream to your channel
-                  </p>
-                </div>
-
-                <div className="pt-4 border-t">
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-3xl font-bold text-gray-900 mb-8">Simple Livestream Dashboard</h1>
+          
+          {/* Error Display */}
+          {error && (
+            <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start">
+                <svg className="w-5 h-5 text-red-400 mt-0.5 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-red-800 font-medium">{error.code}</p>
+                  <p className="text-red-600 text-sm mt-1">{error.message}</p>
                   <button
-                    onClick={() => deleteStream(activeStream.id)}
-                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                    onClick={() => setError(null)}
+                    className="text-red-600 underline text-sm mt-2 hover:text-red-800"
                   >
-                    Delete Stream
+                    Dismiss
                   </button>
                 </div>
               </div>
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-gray-500 mb-4">No active stream selected</p>
-                <button
-                  onClick={createStream}
-                  disabled={isLoading}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium"
-                >
-                  Create Stream
-                </button>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Live Preview */}
-          <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-            <h2 className="text-xl font-semibold mb-4">Live Preview</h2>
-            
-            {/* Fixed: Add proper null checks for activeStream and playbackIds */}
-            {activeStream && activeStream.playbackIds && activeStream.playbackIds.length > 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Stream Controls */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-semibold mb-4">Stream Controls</h2>
+              
               <div className="space-y-4">
-                <MuxLivePlayer
-                  playbackId={activeStream.playbackIds[0]!.id}
-                  streamTitle="Live Stream"
-                  autoPlay={false}
-                  muted={true}
-                  className="w-full aspect-video"
-                />
-                <p className="text-sm text-gray-600">
-                  Playback ID: {activeStream.playbackIds[0]!.id}
-                </p>
-              </div>
-            ) : (
-              <div className="aspect-video bg-gray-100 rounded-lg flex items-center justify-center">
-                <div className="text-center">
-                  <svg className="w-12 h-12 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  <p className="text-gray-500 text-sm">Stream preview will appear here</p>
+                {/* Stream Status */}
+                <div className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${
+                    streamState.isLive ? 'bg-red-500 animate-pulse' :
+                    streamState.isConnecting ? 'bg-yellow-500 animate-pulse' :
+                    'bg-gray-400'
+                  }`}></div>
+                  <span className="text-sm font-medium">
+                    {streamState.isLive ? 'LIVE' : streamState.isConnecting ? 'CONNECTING' : 'OFFLINE'}
+                  </span>
+                  {streamState.viewerCount > 0 && (
+                    <span className="text-sm text-gray-600">
+                      {streamState.viewerCount} viewers
+                    </span>
+                  )}
                 </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
-      {/* All Streams */}
-      {streams.length > 0 && (
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-          <h2 className="text-xl font-semibold mb-4">All Streams</h2>
-          
-          <div className="space-y-3">
-            {streams.map((stream) => (
-              <div
-                key={stream.id}
-                className={`p-4 border rounded-lg cursor-pointer ${
-                  activeStream?.id === stream.id 
-                    ? 'border-blue-300 bg-blue-50' 
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-                onClick={() => setActiveStream(stream)}
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-medium text-gray-900">
-                      Stream {stream.id.substring(0, 8)}...
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      Created: {new Date(stream.createdAt).toLocaleString()}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      Playback IDs: {stream.playbackIds.length}
-                    </p>
+                {/* Stream Type Selection */}
+                {!streamState.isLive && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Stream Type:</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        onClick={() => handleStartStream('webcam')}
+                        disabled={streamState.isConnecting}
+                        className="px-3 py-2 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+                      >
+                        Webcam
+                      </button>
+                      <button
+                        onClick={() => handleStartStream('screen')}
+                        disabled={streamState.isConnecting}
+                        className="px-3 py-2 text-sm bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
+                      >
+                        Screen
+                      </button>
+                      <button
+                        onClick={() => handleStartStream('both')}
+                        disabled={streamState.isConnecting}
+                        className="px-3 py-2 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50"
+                      >
+                        Both
+                      </button>
+                    </div>
                   </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <div className={`px-2 py-1 rounded text-xs font-medium ${
-                      stream.status === 'active' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {stream.status}
+                )}
+
+                {/* Live Controls */}
+                {streamState.isLive && (
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleToggleWebcam}
+                        className={`px-4 py-2 text-sm rounded transition-colors ${
+                          streamState.webcamEnabled 
+                            ? 'bg-blue-500 text-white hover:bg-blue-600'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        {streamState.webcamEnabled ? 'Webcam On' : 'Webcam Off'}
+                      </button>
+                      <button
+                        onClick={handleToggleScreen}
+                        className={`px-4 py-2 text-sm rounded transition-colors ${
+                          streamState.screenEnabled 
+                            ? 'bg-green-500 text-white hover:bg-green-600'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        {streamState.screenEnabled ? 'Screen On' : 'Screen Off'}
+                      </button>
                     </div>
                     
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        deleteStream(stream.id)
-                      }}
-                      className="text-red-600 hover:text-red-800 text-sm"
+                      onClick={handleStopStream}
+                      className="w-full px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
                     >
-                      Delete
+                      Stop Stream
                     </button>
                   </div>
+                )}
+              </div>
+            </div>
+
+            {/* Stream Preview */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-semibold mb-4">Stream Preview</h2>
+              <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden">
+                {/* Fixed: Add proper null checks for mediaStream */}
+                {streamState.mediaStream ? (
+                  <video
+                    ref={(video) => {
+                      if (video && streamState.mediaStream) {
+                        video.srcObject = streamState.mediaStream
+                        video.play().catch(console.error)
+                      }
+                    }}
+                    muted
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-gray-400">
+                    <div className="text-center">
+                      <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+                      </svg>
+                      <p>No stream preview available</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Stream Information */}
+            <div className="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-semibold mb-4">Stream Information</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">{streamState.viewerCount}</div>
+                  <div className="text-sm text-gray-600">Viewers</div>
+                </div>
+                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">
+                    {streamState.isLive ? 'LIVE' : 'OFFLINE'}
+                  </div>
+                  <div className="text-sm text-gray-600">Status</div>
+                </div>
+                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600 capitalize">{streamState.streamType}</div>
+                  <div className="text-sm text-gray-600">Type</div>
+                </div>
+                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {new Date(streamState.lastUpdated).toLocaleTimeString()}
+                  </div>
+                  <div className="text-sm text-gray-600">Last Update</div>
                 </div>
               </div>
-            ))}
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

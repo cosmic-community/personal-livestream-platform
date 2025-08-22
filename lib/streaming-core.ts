@@ -1,95 +1,194 @@
+import { socketManager } from '@/lib/socket'
+import {
+  getUserMediaStream,
+  getDisplayMediaStream,
+  createPeerConnection,
+  createOffer,
+  createAnswer,
+  handleIceCandidate,
+  stopMediaStream,
+  combineStreams,
+  checkWebRTCSupport
+} from '@/lib/webrtc'
 import { StreamState, StreamType, StreamError, createStreamState } from '@/types'
 
 interface StreamingCoreConfig {
-  serverUrl: string
+  serverUrl?: string
   debug?: boolean
+  videoConstraints?: MediaStreamConstraints['video']
+  audioConstraints?: MediaStreamConstraints['audio']
 }
 
 export class StreamingCore {
   private config: StreamingCoreConfig
   private state: StreamState
-  private listeners: {
-    onStateChange?: (state: StreamState) => void
-    onError?: (error: StreamError) => void
-  } = {}
+  private mediaStreams: Map<string, MediaStream> = new Map()
+  private peerConnections: Map<string, RTCPeerConnection> = new Map()
+  private isInitialized = false
 
-  private currentStream: MediaStream | null = null
-  private isInitialized: boolean = false
+  // Event callbacks
+  private onStateChangeCb?: (state: StreamState) => void
+  private onErrorCb?: (error: StreamError) => void
 
-  constructor(config: StreamingCoreConfig) {
-    this.config = config
-    this.state = createStreamState()
+  constructor(config: StreamingCoreConfig = {}) {
+    this.config = {
+      serverUrl: config.serverUrl || 'ws://localhost:3001',
+      debug: config.debug || false,
+      videoConstraints: config.videoConstraints || {
+        width: { ideal: 1280, max: 1920 },
+        height: { ideal: 720, max: 1080 },
+        frameRate: { ideal: 30, max: 60 }
+      },
+      audioConstraints: config.audioConstraints || {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    }
+
+    // Fixed: Initialize with proper StreamState structure
+    this.state = createStreamState({
+      isLive: false,
+      isConnecting: false,
+      streamType: 'webcam',
+      webcamEnabled: false,
+      screenEnabled: false,
+      viewerCount: 0
+    })
+  }
+
+  private log(message: string, data?: any): void {
+    if (this.config.debug) {
+      console.log(`[StreamingCore] ${message}`, data || '')
+    }
+  }
+
+  private emitStateChange(): void {
+    this.onStateChangeCb?.(this.state)
+  }
+
+  private emitError(error: StreamError): void {
+    this.onErrorCb?.(error)
   }
 
   async initialize(): Promise<boolean> {
     try {
-      console.log('🚀 Initializing streaming core...')
-      
-      // Check browser support
-      const isSupported = this.checkBrowserSupport()
-      if (!isSupported) {
-        throw new Error('Browser does not support required features')
+      // Check WebRTC support
+      if (!checkWebRTCSupport()) {
+        throw new Error('WebRTC is not supported in this browser')
       }
 
       this.isInitialized = true
-      console.log('✅ Streaming core initialized successfully')
+      this.log('StreamingCore initialized successfully')
       return true
 
     } catch (error) {
-      console.error('❌ Failed to initialize streaming core:', error)
+      this.log('Failed to initialize StreamingCore:', error)
       this.emitError({
-        code: 'INITIALIZATION_FAILED',
-        message: error instanceof Error ? error.message : 'Unknown initialization error',
+        code: 'INIT_FAILED',
+        message: error instanceof Error ? error.message : 'Initialization failed',
         timestamp: new Date().toISOString()
       })
       return false
     }
   }
 
-  private checkBrowserSupport(): boolean {
-    // Fixed: Check if functions exist before calling them
-    return !!(
-      navigator.mediaDevices &&
-      navigator.mediaDevices.getUserMedia &&
-      typeof navigator.mediaDevices.getUserMedia === 'function' &&
-      window.MediaRecorder
-    )
+  async connect(): Promise<boolean> {
+    try {
+      if (!this.isInitialized) {
+        throw new Error('StreamingCore not initialized')
+      }
+
+      // Connect to signaling server
+      const socket = socketManager.connect()
+      this.log('Connected to signaling server:', socket.id)
+      return true
+
+    } catch (error) {
+      this.log('Failed to connect:', error)
+      this.emitError({
+        code: 'CONNECTION_FAILED',
+        message: error instanceof Error ? error.message : 'Connection failed',
+        timestamp: new Date().toISOString()
+      })
+      return false
+    }
   }
 
   async startStream(type: StreamType): Promise<void> {
-    if (!this.isInitialized) {
-      throw new Error('Streaming core not initialized')
-    }
-
     try {
-      console.log('🎥 Starting stream:', type)
-      
-      this.updateState({
-        isConnecting: true,
-        streamType: type,
-        error: undefined
-      })
+      this.log(`Starting ${type} stream...`)
+      this.state.isConnecting = true
+      // Fixed: Ensure streamType matches interface expectations (no 'combined' type)
+      this.state.streamType = type
+      this.emitStateChange()
 
-      // Get media stream based on type
-      const stream = await this.getMediaStream(type)
-      this.currentStream = stream
+      // Get media streams based on type
+      let mediaStream: MediaStream | undefined
 
-      this.updateState({
-        isLive: true,
-        isConnecting: false,
-        webcamEnabled: type === 'webcam' || type === 'both',
-        screenEnabled: type === 'screen' || type === 'both'
-      })
+      switch (type) {
+        case 'webcam':
+          mediaStream = await this.getWebcamStream()
+          if (mediaStream) {
+            this.mediaStreams.set('webcam', mediaStream)
+            this.state.webcamEnabled = true
+            this.state.screenEnabled = false
+          }
+          break
 
-      console.log('✅ Stream started successfully')
+        case 'screen':
+          mediaStream = await this.getScreenStream()
+          if (mediaStream) {
+            this.mediaStreams.set('screen', mediaStream)
+            this.state.webcamEnabled = false
+            this.state.screenEnabled = true
+          }
+          break
+
+        case 'both':
+          const webcamStream = await this.getWebcamStream()
+          const screenStream = await this.getScreenStream()
+          
+          if (webcamStream && screenStream) {
+            this.mediaStreams.set('webcam', webcamStream)
+            this.mediaStreams.set('screen', screenStream)
+            mediaStream = combineStreams([webcamStream, screenStream])
+            this.state.webcamEnabled = true
+            this.state.screenEnabled = true
+          } else {
+            throw new Error('Failed to get both webcam and screen streams')
+          }
+          break
+
+        default:
+          throw new Error(`Unsupported stream type: ${type}`)
+      }
+
+      if (!mediaStream) {
+        throw new Error(`Failed to get ${type} stream`)
+      }
+
+      this.mediaStreams.set('combined', mediaStream)
+
+      // Start broadcasting
+      await socketManager.startBroadcast(type)
+
+      this.state.isLive = true
+      this.state.isConnecting = false
+      this.state.mediaStream = mediaStream
+      this.emitStateChange()
+
+      this.log('Stream started successfully')
 
     } catch (error) {
-      console.error('❌ Failed to start stream:', error)
-      
-      this.updateState({
-        isConnecting: false,
-        isLive: false,
-        error: error instanceof Error ? error.message : 'Stream start failed'
+      this.log('Failed to start stream:', error)
+      this.state.isConnecting = false
+      this.emitStateChange()
+
+      this.emitError({
+        code: 'STREAM_START_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to start stream',
+        timestamp: new Date().toISOString()
       })
 
       throw error
@@ -98,133 +197,169 @@ export class StreamingCore {
 
   async stopStream(): Promise<void> {
     try {
-      console.log('🛑 Stopping stream...')
+      this.log('Stopping stream...')
 
-      if (this.currentStream) {
-        this.currentStream.getTracks().forEach(track => {
-          track.stop()
-        })
-        this.currentStream = null
-      }
+      // Stop broadcasting
+      socketManager.stopBroadcast()
 
-      this.updateState({
+      // Close all peer connections
+      this.peerConnections.forEach((pc) => {
+        pc.close()
+      })
+      this.peerConnections.clear()
+
+      // Stop all media streams
+      this.mediaStreams.forEach((stream) => {
+        stopMediaStream(stream)
+      })
+      this.mediaStreams.clear()
+
+      // Reset state
+      this.state = createStreamState({
         isLive: false,
         isConnecting: false,
+        streamType: 'webcam',
         webcamEnabled: false,
         screenEnabled: false,
         viewerCount: 0,
-        error: undefined
+        mediaStream: null
       })
 
-      console.log('✅ Stream stopped successfully')
+      this.emitStateChange()
+      this.log('Stream stopped successfully')
 
     } catch (error) {
-      console.error('❌ Failed to stop stream:', error)
+      this.log('Error stopping stream:', error)
       throw error
     }
   }
 
-  private async getMediaStream(type: StreamType): Promise<MediaStream> {
-    switch (type) {
-      case 'webcam':
-        return await navigator.mediaDevices.getUserMedia({
-          video: { width: 1280, height: 720 },
-          audio: true
-        })
-      
-      case 'screen':
-        return await navigator.mediaDevices.getDisplayMedia({
-          video: { width: 1920, height: 1080 },
-          audio: true
-        })
-      
-      case 'both':
-        // For both, we'll start with webcam (could be enhanced to combine streams)
-        return await navigator.mediaDevices.getUserMedia({
-          video: { width: 1280, height: 720 },
-          audio: true
-        })
-      
-      default:
-        throw new Error(`Unsupported stream type: ${type}`)
+  private async getWebcamStream(): Promise<MediaStream | undefined> {
+    try {
+      const stream = await getUserMediaStream({
+        video: this.config.videoConstraints,
+        audio: this.config.audioConstraints
+      })
+      this.log('Webcam stream acquired')
+      return stream
+    } catch (error) {
+      this.log('Failed to get webcam stream:', error)
+      return undefined
+    }
+  }
+
+  private async getScreenStream(): Promise<MediaStream | undefined> {
+    try {
+      const stream = await getDisplayMediaStream({
+        video: {
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 }
+        },
+        audio: true
+      })
+      this.log('Screen stream acquired')
+      return stream
+    } catch (error) {
+      this.log('Failed to get screen stream:', error)
+      return undefined
     }
   }
 
   async toggleWebcam(): Promise<void> {
-    if (!this.state.isLive) {
-      await this.startStream('webcam')
-    } else {
-      await this.stopStream()
+    try {
+      if (this.state.webcamEnabled) {
+        // Turn off webcam
+        const webcamStream = this.mediaStreams.get('webcam')
+        if (webcamStream) {
+          stopMediaStream(webcamStream)
+          this.mediaStreams.delete('webcam')
+        }
+        this.state.webcamEnabled = false
+      } else {
+        // Turn on webcam
+        const webcamStream = await this.getWebcamStream()
+        if (webcamStream) {
+          this.mediaStreams.set('webcam', webcamStream)
+          this.state.webcamEnabled = true
+        }
+      }
+      this.emitStateChange()
+    } catch (error) {
+      this.emitError({
+        code: 'WEBCAM_TOGGLE_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to toggle webcam',
+        timestamp: new Date().toISOString()
+      })
+      throw error
     }
   }
 
   async toggleScreen(): Promise<void> {
-    if (!this.state.isLive) {
-      await this.startStream('screen')
-    } else {
-      await this.stopStream()
-    }
-  }
-
-  async connect(): Promise<boolean> {
     try {
-      console.log('🔌 Connecting to streaming server...')
-      // Basic connection logic - simplified for now
-      return true
+      if (this.state.screenEnabled) {
+        // Turn off screen share
+        const screenStream = this.mediaStreams.get('screen')
+        if (screenStream) {
+          stopMediaStream(screenStream)
+          this.mediaStreams.delete('screen')
+        }
+        this.state.screenEnabled = false
+      } else {
+        // Turn on screen share
+        const screenStream = await this.getScreenStream()
+        if (screenStream) {
+          this.mediaStreams.set('screen', screenStream)
+          this.state.screenEnabled = true
+        }
+      }
+      this.emitStateChange()
     } catch (error) {
-      console.error('❌ Connection failed:', error)
-      return false
+      this.emitError({
+        code: 'SCREEN_TOGGLE_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to toggle screen share',
+        timestamp: new Date().toISOString()
+      })
+      throw error
     }
   }
 
-  disconnect(): void {
-    console.log('🔌 Disconnecting from streaming server...')
-    this.stopStream()
-  }
-
-  isConnected(): boolean {
-    return this.isInitialized
-  }
-
+  // Public getters
   getCurrentStream(): MediaStream | undefined {
-    return this.currentStream || undefined
+    return this.mediaStreams.get('combined')
   }
 
   getStreamStats(): any {
+    // Return basic stats (could be enhanced)
     return {
-      isLive: this.state.isLive,
-      streamType: this.state.streamType,
-      viewerCount: this.state.viewerCount,
-      uptime: this.state.isLive ? Date.now() - new Date(this.state.lastUpdated).getTime() : 0
+      streamsCount: this.mediaStreams.size,
+      connectionsCount: this.peerConnections.size,
+      isLive: this.state.isLive
     }
   }
 
-  private updateState(updates: Partial<StreamState>): void {
-    this.state = {
-      ...this.state,
-      ...updates,
-      lastUpdated: new Date().toISOString()
-    }
-    
-    this.listeners.onStateChange?.(this.state)
+  isConnected(): boolean {
+    return socketManager.isConnected()
   }
 
-  private emitError(error: StreamError): void {
-    this.listeners.onError?.(error)
-  }
-
+  // Event handlers
   onStateChange(callback: (state: StreamState) => void): void {
-    this.listeners.onStateChange = callback
+    this.onStateChangeCb = callback
   }
 
   onError(callback: (error: StreamError) => void): void {
-    this.listeners.onError = callback
+    this.onErrorCb = callback
+  }
+
+  disconnect(): void {
+    socketManager.disconnect()
   }
 
   destroy(): void {
-    console.log('🧹 Destroying streaming core...')
-    this.stopStream()
-    this.listeners = {}
-    this.isInitialized = false
+    this.log('Destroying streaming core...')
+    this.stopStream().catch(console.error)
+    this.disconnect()
   }
 }
+
+export default StreamingCore

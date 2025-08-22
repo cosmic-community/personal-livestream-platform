@@ -168,22 +168,6 @@ export class StreamManager {
           }
           break
 
-        case 'combined':
-          // Fixed: Handle 'combined' case same as 'both'
-          const combinedWebcamStream = await this.getWebcamStream()
-          const combinedScreenStream = await this.getScreenStream()
-          
-          if (combinedWebcamStream && combinedScreenStream) {
-            this.localStreams.set('webcam', combinedWebcamStream)
-            this.localStreams.set('screen', combinedScreenStream)
-            mediaStream = combineStreams([combinedWebcamStream, combinedScreenStream])
-            this.state.webcamEnabled = true
-            this.state.screenEnabled = true
-          } else {
-            throw new Error('Failed to get combined streams')
-          }
-          break
-
         default:
           throw new Error(`Unsupported stream type: ${type}`)
       }
