@@ -147,7 +147,7 @@ export class ConnectionManager {
           resolve(true)
         })
 
-        this.socket.on('connect_error', (error) => {
+        this.socket.on('connect_error', (error: Error) => {
           clearTimeout(connectionTimeout)
           this.log('Connection error:', error.message)
           this.state.lastError = error.message
@@ -155,7 +155,7 @@ export class ConnectionManager {
           resolve(false)
         })
 
-        this.socket.on('disconnect', (reason) => {
+        this.socket.on('disconnect', (reason: string) => {
           this.log('Disconnected:', reason)
           this.handleDisconnection(reason)
         })
@@ -171,24 +171,24 @@ export class ConnectionManager {
     if (!this.socket) return
 
     // Relay all socket events to our event system
-    this.socket.onAny((event, ...args) => {
+    this.socket.onAny((event: string, ...args: any[]) => {
       this.emitEvent(event, args.length === 1 ? args[0] : args)
     })
 
     // Handle specific events
-    this.socket.on('stream-started', (data) => {
+    this.socket.on('stream-started', (data: any) => {
       this.emitEvent('stream-started', data)
     })
 
-    this.socket.on('stream-ended', (data) => {
+    this.socket.on('stream-ended', (data: any) => {
       this.emitEvent('stream-ended', data)
     })
 
-    this.socket.on('viewer-count', (count) => {
+    this.socket.on('viewer-count', (count: number) => {
       this.emitEvent('viewer-count', count)
     })
 
-    this.socket.on('error', (error) => {
+    this.socket.on('error', (error: Error) => {
       this.log('Socket error:', error)
       this.emitEvent('socket-error', error)
     })

@@ -47,7 +47,7 @@ export async function GET(
     
     // Get asset tracks to see available subtitles
     const tracks = await muxClient.getAssetTracks(id)
-    const subtitleTracks = tracks.filter(track => 
+    const subtitleTracks = tracks.filter((track: any) => 
       track.type === 'text' || track.type === 'subtitle'
     )
     

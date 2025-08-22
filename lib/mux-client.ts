@@ -84,7 +84,7 @@ class MuxClient {
       console.warn('🔐 SECURITY: Stream key will be generated - treat it as a private credential!')
 
       // Create live stream with your unique Mux configuration
-      const liveStream = await this.mux.video.liveStreams.create({
+      const liveStream = await this.mux.Video.liveStreams.create({
         playback_policy: [options.playbackPolicy || 'public'],
         new_asset_settings: {
           playback_policy: [options.newAssetSettings?.playbackPolicy || 'public'],
@@ -141,7 +141,7 @@ class MuxClient {
 
   async getLiveStream(liveStreamId: string) {
     try {
-      const liveStream = await this.mux.video.liveStreams.retrieve(liveStreamId)
+      const liveStream = await this.mux.Video.liveStreams.retrieve(liveStreamId)
       
       // Log security reminder when accessing stream data
       console.warn('🔐 Accessing stream with sensitive stream key - handle securely')
@@ -176,7 +176,7 @@ class MuxClient {
   async deleteLiveStream(liveStreamId: string) {
     try {
       console.log('🗑️ Deleting live stream - this will invalidate the stream key:', liveStreamId)
-      await this.mux.video.liveStreams.delete(liveStreamId)
+      await this.mux.Video.liveStreams.delete(liveStreamId)
       console.log('✅ Live stream deleted - stream key is now invalid')
       return { success: true, streamKeyInvalidated: true }
     } catch (error) {
@@ -205,10 +205,10 @@ class MuxClient {
   async enableLiveStream(liveStreamId: string) {
     try {
       // Fixed: Handle void return type properly
-      await this.mux.video.liveStreams.enable(liveStreamId)
+      await this.mux.Video.liveStreams.enable(liveStreamId)
       
       // Always retrieve the updated stream to get current status
-      const updatedStream = await this.mux.video.liveStreams.retrieve(liveStreamId)
+      const updatedStream = await this.mux.Video.liveStreams.retrieve(liveStreamId)
       return {
         id: updatedStream.id,
         status: updatedStream.status
@@ -223,10 +223,10 @@ class MuxClient {
     try {
       console.log('⏹️ Disabling live stream (stream key remains valid):', liveStreamId)
       // Fixed: Handle void return type properly
-      await this.mux.video.liveStreams.disable(liveStreamId)
+      await this.mux.Video.liveStreams.disable(liveStreamId)
       
       // Always retrieve the updated stream to get current status
-      const updatedStream = await this.mux.video.liveStreams.retrieve(liveStreamId)
+      const updatedStream = await this.mux.Video.liveStreams.retrieve(liveStreamId)
       return {
         id: updatedStream.id,
         status: updatedStream.status
@@ -248,7 +248,7 @@ class MuxClient {
       // Fixed: Ensure inputs array is properly typed and handle undefined case
       const inputs: Input[] = input.url ? [{ url: input.url }] : []
       
-      const asset = await this.mux.video.assets.create({
+      const asset = await this.mux.Video.assets.create({
         input: inputs,
         playback_policy: [input.playbackPolicy || 'public'],
         mp4_support: input.mp4Support || 'none',
@@ -272,7 +272,7 @@ class MuxClient {
 
   async getAsset(assetId: string) {
     try {
-      const asset = await this.mux.video.assets.retrieve(assetId)
+      const asset = await this.mux.Video.assets.retrieve(assetId)
       
       return {
         id: asset.id,
@@ -293,7 +293,7 @@ class MuxClient {
 
   async deleteAsset(assetId: string) {
     try {
-      await this.mux.video.assets.delete(assetId)
+      await this.mux.Video.assets.delete(assetId)
       return { success: true }
     } catch (error) {
       console.error('Failed to delete asset:', error)
