@@ -101,7 +101,7 @@ class MuxClient {
         id: liveStream.id,
         stream_key: `${liveStream.stream_key.substring(0, 8)}...`, // Only log partial key
         status: liveStream.status,
-        playback_ids: liveStream.playbook_ids?.length || 0,
+        playback_ids: liveStream.playback_ids?.length || 0,
         created_at: liveStream.created_at
       })
 
@@ -109,7 +109,7 @@ class MuxClient {
         id: liveStream.id,
         status: liveStream.status,
         streamKey: liveStream.stream_key, // ⚠️ SENSITIVE: Treat as private credential
-        playbackIds: liveStream.playbook_ids || [],
+        playbackIds: liveStream.playback_ids || [],
         rtmpUrl: `rtmps://global-live.mux.com:443/live/${liveStream.stream_key}`,
         reconnectWindow: liveStream.reconnect_window,
         reducedLatency: liveStream.reduced_latency,
@@ -150,7 +150,7 @@ class MuxClient {
         id: liveStream.id,
         status: liveStream.status,
         streamKey: liveStream.stream_key, // ⚠️ SENSITIVE: Handle with care
-        playbackIds: liveStream.playbook_ids || [],
+        playbackIds: liveStream.playback_ids || [],
         rtmpUrl: `rtmps://global-live.mux.com:443/live/${liveStream.stream_key}`,
         reconnectWindow: liveStream.reconnect_window,
         reducedLatency: liveStream.reduced_latency,
@@ -258,7 +258,7 @@ class MuxClient {
       return {
         id: asset.id,
         status: asset.status,
-        playbackIds: asset.playbook_ids || [],
+        playbackIds: asset.playback_ids || [],
         mp4Support: asset.mp4_support,
         normalizeAudio: asset.normalize_audio,
         createdAt: asset.created_at,
@@ -277,7 +277,7 @@ class MuxClient {
       return {
         id: asset.id,
         status: asset.status,
-        playbackIds: asset.playbook_ids || [],
+        playbackIds: asset.playback_ids || [],
         mp4Support: asset.mp4_support,
         normalizeAudio: asset.normalize_audio,
         createdAt: asset.created_at,
