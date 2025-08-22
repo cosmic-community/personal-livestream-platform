@@ -164,8 +164,8 @@ class MuxClient {
   async deleteLiveStream(liveStreamId: string) {
     try {
       console.log('🗑️ Deleting live stream - this will invalidate the stream key:', liveStreamId)
-      // Fixed: Use correct property name 'video' instead of 'Video'
-      await this.mux.video.liveStreams.del(liveStreamId)
+      // Fixed: Use correct method name 'delete' instead of 'del'
+      await this.mux.video.liveStreams.delete(liveStreamId)
       console.log('✅ Live stream deleted - stream key is now invalid')
       return { success: true, streamKeyInvalidated: true }
     } catch (error) {
