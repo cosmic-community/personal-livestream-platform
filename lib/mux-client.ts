@@ -98,7 +98,7 @@ class MuxClient {
         id: liveStream.id,
         status: liveStream.status,
         streamKey: liveStream.stream_key,
-        playbackIds: liveStream.playbook_ids || [], // Note: Mux SDK uses playbook_ids
+        playbackIds: liveStream.playback_ids || [], // Fixed: Changed from playbook_ids to playback_ids
         rtmpUrl: `rtmps://global-live.mux.com:443/live/${liveStream.stream_key}`,
         reconnectWindow: liveStream.reconnect_window,
         reducedLatency: liveStream.reduced_latency,
@@ -128,7 +128,7 @@ class MuxClient {
         id: liveStream.id,
         status: liveStream.status,
         streamKey: liveStream.stream_key,
-        playbackIds: liveStream.playbook_ids || [],
+        playbackIds: liveStream.playback_ids || [], // Fixed: Changed from playbook_ids to playback_ids
         rtmpUrl: `rtmps://global-live.mux.com:443/live/${liveStream.stream_key}`,
         reconnectWindow: liveStream.reconnect_window,
         reducedLatency: liveStream.reduced_latency,
@@ -206,7 +206,7 @@ class MuxClient {
       return {
         id: asset.id,
         status: asset.status,
-        playbackIds: asset.playbook_ids || [],
+        playbackIds: asset.playback_ids || [], // Fixed: Changed from playbook_ids to playback_ids
         mp4Support: asset.mp4_support,
         normalizeAudio: asset.normalize_audio,
         createdAt: asset.created_at,
@@ -225,7 +225,7 @@ class MuxClient {
       return {
         id: asset.id,
         status: asset.status,
-        playbackIds: asset.playbook_ids || [],
+        playbackIds: asset.playback_ids || [], // Fixed: Changed from playbook_ids to playback_ids
         mp4Support: asset.mp4_support,
         normalizeAudio: asset.normalize_audio,
         createdAt: asset.created_at,
