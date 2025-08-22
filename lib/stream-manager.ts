@@ -241,7 +241,7 @@ export class StreamManager {
   private async getScreenStream(): Promise<MediaStream | undefined> {
     try {
       // Fixed: Use proper MediaStreamConstraints for getDisplayMedia
-      const constraints: DisplayMediaStreamConstraints = {
+      const constraints: MediaStreamConstraints = {
         video: {
           width: { ideal: 1920 },
           height: { ideal: 1080 },
