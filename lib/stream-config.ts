@@ -44,7 +44,7 @@ export function log(level: 'info' | 'warn' | 'error', message: string, data?: an
   }
 }
 
-export default {
+const streamConfig: StreamConfig = {
   SERVER_URLS: [
     'ws://localhost:3001',
     'wss://streaming-server.example.com'
@@ -87,3 +87,56 @@ export default {
     }
   }
 }
+
+// Named export functions that other files are trying to import
+export function getStreamConfig(): StreamConfig {
+  return streamConfig
+}
+
+export function getWebRTCConfig(): RTCConfiguration {
+  return streamConfig.WEBRTC
+}
+
+export function createStreamError(message: string, code?: string, context?: any): Error {
+  const error = new Error(message)
+  if (code) {
+    (error as any).code = code
+  }
+  if (context) {
+    (error as any).context = context
+  }
+  return error
+}
+
+export async function testAllConnectionMethods(): Promise<{
+  websocket: boolean
+  webrtc: boolean
+  fallback: boolean
+}> {
+  const results = {
+    websocket: false,
+    webrtc: false,
+    fallback: true // Always available as last resort
+  }
+
+  // Test WebSocket availability
+  if (typeof WebSocket !== 'undefined') {
+    results.websocket = true
+  }
+
+  // Test WebRTC availability
+  if (typeof RTCPeerConnection !== 'undefined') {
+    try {
+      const testConnection = new RTCPeerConnection()
+      testConnection.close()
+      results.webrtc = true
+    } catch (error) {
+      log('warn', 'WebRTC test failed', error)
+    }
+  }
+
+  return results
+}
+
+// Keep default export for backward compatibility
+export default streamConfig
