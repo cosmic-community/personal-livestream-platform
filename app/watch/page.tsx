@@ -1,10 +1,12 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import MuxLivePlayer from '@/components/MuxLivePlayer'
 
-export default function WatchPage() {
+// Create a separate component for the search params logic
+function WatchContent() {
   const searchParams = useSearchParams()
   const [playbackId, setPlaybackId] = useState<string>('')
   const [customPlaybackId, setCustomPlaybackId] = useState<string>('')
@@ -59,7 +61,7 @@ export default function WatchPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <>
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
@@ -305,6 +307,53 @@ export default function WatchPage() {
           </div>
         )}
       </main>
+    </>
+  )
+}
+
+// Loading component for Suspense fallback
+function WatchPageLoading() {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Live Stream Viewer</h1>
+              <p className="text-gray-600 mt-1">Watch live streams powered by Mux</p>
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <a href="/" className="btn btn-primary">
+                Create Stream
+              </a>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white rounded-lg shadow p-8">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-lg font-semibold text-gray-900">Loading stream viewer...</p>
+              <p className="text-gray-600 text-sm mt-1">Please wait while we prepare your streaming experience</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  )
+}
+
+// Main component with Suspense boundary
+export default function WatchPage() {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Suspense fallback={<WatchPageLoading />}>
+        <WatchContent />
+      </Suspense>
     </div>
   )
 }
