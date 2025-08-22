@@ -15,8 +15,8 @@ export async function GET(
   } catch (error) {
     console.error('❌ Failed to get stream:', error)
     return NextResponse.json(
-      { error: 'Stream not found' },
-      { status: 404 }
+      { error: error instanceof Error ? error.message : 'Failed to get stream' },
+      { status: 500 }
     )
   }
 }
@@ -34,7 +34,7 @@ export async function DELETE(
   } catch (error) {
     console.error('❌ Failed to delete stream:', error)
     return NextResponse.json(
-      { error: 'Failed to delete stream' },
+      { error: error instanceof Error ? error.message : 'Failed to delete stream' },
       { status: 500 }
     )
   }

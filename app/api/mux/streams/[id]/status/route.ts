@@ -11,11 +11,15 @@ export async function GET(
     const muxClient = getMuxClient()
     
     const stream = await muxClient.getLiveStream(id)
-    return NextResponse.json({ status: stream.status })
+    
+    return NextResponse.json({
+      status: stream.status,
+      id: stream.id
+    })
   } catch (error) {
     console.error('❌ Failed to get stream status:', error)
     return NextResponse.json(
-      { error: 'Failed to get stream status' },
+      { error: error instanceof Error ? error.message : 'Failed to get stream status' },
       { status: 500 }
     )
   }

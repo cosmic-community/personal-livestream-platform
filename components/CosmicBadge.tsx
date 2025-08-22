@@ -25,7 +25,7 @@ export default function CosmicBadge({ bucketSlug }: { bucketSlug: string }) {
     <div 
       className="fixed bottom-5 right-5 z-50 transition-colors duration-200"
       style={{
-        position: 'fixed', // CRITICAL: Explicitly set to fixed to prevent relative positioning
+        position: 'fixed',
         backgroundColor: 'white',
         border: '1px solid #e5e7eb',
         borderRadius: '8px',
@@ -49,14 +49,8 @@ export default function CosmicBadge({ bucketSlug }: { bucketSlug: string }) {
         target="_blank"
         rel="noopener noreferrer"
         className="flex items-center gap-2 text-gray-800 text-sm font-medium no-underline"
-        onMouseEnter={(e) => {
-          const parent = e.currentTarget.parentElement
-          if (parent) parent.style.backgroundColor = '#f9fafb'
-        }}
-        onMouseLeave={(e) => {
-          const parent = e.currentTarget.parentElement
-          if (parent) parent.style.backgroundColor = 'white'
-        }}
+        onMouseEnter={(e) => e.currentTarget.parentElement!.style.backgroundColor = '#f9fafb'}
+        onMouseLeave={(e) => e.currentTarget.parentElement!.style.backgroundColor = 'white'}
       >
         <img 
           src="https://cdn.cosmicjs.com/b67de7d0-c810-11ed-b01d-23d7b265c299-logo508x500.svg" 
