@@ -11,24 +11,52 @@ export async function POST(
   { params }: RouteParams
 ) {
   try {
-    const { id: assetId } = await params
+    const { id } = await params
     const body = await request.json()
-    const { trackId, subtitleConfig } = body
+    const { trackId, languageCode = 'en', name = 'English (generated)' } = body
     
     const muxClient = getMuxClient()
     
-    // Generate subtitles for the asset track
-    const subtitles = await muxClient.generateSubtitles(assetId, trackId, {
-      languageCode: subtitleConfig?.languageCode || 'en',
-      name: subtitleConfig?.name || 'English (generated)',
-      passthrough: subtitleConfig?.passthrough || 'English (generated)'
+    console.log('📝 Generating subtitles for asset:', id, 'track:', trackId)
+    
+    // Generate subtitles using Mux API
+    const result = await muxClient.generateSubtitles(id, trackId, {
+      languageCode,
+      name,
+      passthrough: name
     })
     
-    return NextResponse.json(subtitles)
+    return NextResponse.json(result)
+    
   } catch (error) {
     console.error('Failed to generate subtitles:', error)
     return NextResponse.json(
       { error: 'Failed to generate subtitles' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: RouteParams
+) {
+  try {
+    const { id } = await params
+    const muxClient = getMuxClient()
+    
+    // Get asset tracks to see available subtitles
+    const tracks = await muxClient.getAssetTracks(id)
+    const subtitleTracks = tracks.filter(track => 
+      track.type === 'text' || track.type === 'subtitle'
+    )
+    
+    return NextResponse.json({ tracks: subtitleTracks })
+    
+  } catch (error) {
+    console.error('Failed to get subtitle tracks:', error)
+    return NextResponse.json(
+      { error: 'Failed to get subtitle tracks' },
       { status: 500 }
     )
   }
