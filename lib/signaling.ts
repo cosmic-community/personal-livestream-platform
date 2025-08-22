@@ -66,7 +66,7 @@ class SignalingManager {
     })
 
     // ICE Candidate - Fixed parameter type handling
-    socketManager.onIceCandidate((data: { candidate: RTCIceCandidateInit; socketId: string }) => {
+    socketManager.on('ice-candidate-received', (data: { candidate: RTCIceCandidateInit; socketId: string }) => {
       const from = data.socketId || 'unknown'
       log('info', `📥 Received ICE candidate from ${from}`)
       
@@ -83,7 +83,7 @@ class SignalingManager {
     })
 
     // Peer joined
-    socketManager.on('peer-joined', (data) => {
+    socketManager.on('peer-joined', (data: any) => {
       const { peerId } = data
       log('info', `👤 Peer joined: ${peerId}`)
       
@@ -94,7 +94,7 @@ class SignalingManager {
     })
 
     // Peer left
-    socketManager.on('peer-left', (data) => {
+    socketManager.on('peer-left', (data: any) => {
       const { peerId } = data
       log('info', `👤 Peer left: ${peerId}`)
       
@@ -105,7 +105,7 @@ class SignalingManager {
     })
 
     // Signaling errors
-    socketManager.onStreamError((error) => {
+    socketManager.onStreamError((error: any) => {
       log('error', '❌ Signaling error:', error)
       if (this.config.onError) {
         this.config.onError(error)
@@ -189,7 +189,8 @@ class SignalingManager {
     }
 
     log('info', `📤 Sending WebRTC offer${targetId ? ` to ${targetId}` : ''}`)
-    socketManager.sendOffer(offer, targetId)
+    // Fixed: Provide default value for targetId
+    socketManager.sendOffer(offer, targetId || '')
   }
 
   sendAnswer(answer: RTCSessionDescriptionInit, targetId: string): void {
@@ -219,7 +220,9 @@ class SignalingManager {
     }
 
     log('info', `📤 Sending ICE candidate${targetId ? ` to ${targetId}` : ''}`)
-    socketManager.sendIceCandidate(candidate, targetId)
+    // Fixed: Create proper RTCIceCandidate from RTCIceCandidateInit
+    const iceCandidate = new RTCIceCandidate(candidate)
+    socketManager.sendIceCandidate(iceCandidate, targetId || '')
   }
 
   joinRoom(roomId: string): void {

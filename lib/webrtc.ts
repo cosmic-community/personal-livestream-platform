@@ -3,15 +3,17 @@ export function checkWebRTCSupport(): boolean {
     return false
   }
 
+  // Fixed: Use proper RTCPeerConnection detection
   const hasRTCPeerConnection = !!(
     window.RTCPeerConnection ||
-    window.webkitRTCPeerConnection ||
+    (window as any).webkitRTCPeerConnection ||
     (window as any).mozRTCPeerConnection
   )
 
+  // Fixed: Use proper getUserMedia detection
   const hasGetUserMedia = !!(
     navigator?.mediaDevices?.getUserMedia ||
-    navigator?.getUserMedia ||
+    (navigator as any)?.getUserMedia ||
     (navigator as any)?.webkitGetUserMedia ||
     (navigator as any)?.mozGetUserMedia
   )
@@ -121,6 +123,7 @@ export async function handleIceCandidate(
   candidate: RTCIceCandidateInit
 ): Promise<void> {
   try {
+    // Fixed: Create RTCIceCandidate from RTCIceCandidateInit
     await peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
   } catch (error) {
     console.error('❌ Failed to handle ICE candidate:', error)

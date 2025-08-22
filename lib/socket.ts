@@ -24,12 +24,28 @@ interface SocketEvents {
   'error': (error: string) => void
 }
 
+interface ConnectionHealth {
+  connected: boolean
+  fallbackMode: boolean
+  reconnectAttempts: number
+  currentUrl: string
+  socketId?: string
+  urlAttempts: number
+  availableUrls: number
+  quality: 'excellent' | 'good' | 'fair' | 'poor'
+  latency: number
+}
+
 class SocketManager {
   private socket: Socket | null = null
   private isConnectedState = false
   private reconnectAttempts = 0
   private maxReconnectAttempts = 5
   private reconnectDelay = 1000
+  private fallbackMode = false
+  private urlAttempts = 0
+  private availableUrls: string[] = []
+  private currentUrl = ''
 
   connect(): Socket {
     if (this.socket && this.isConnectedState) {
@@ -37,6 +53,8 @@ class SocketManager {
     }
 
     const serverUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'ws://localhost:3001'
+    this.currentUrl = serverUrl
+    this.availableUrls = [serverUrl]
     
     this.socket = io(serverUrl, {
       transports: ['websocket'],
@@ -50,6 +68,7 @@ class SocketManager {
       console.log('✅ Connected to signaling server:', this.socket?.id)
       this.isConnectedState = true
       this.reconnectAttempts = 0
+      this.fallbackMode = false
     })
 
     this.socket.on('disconnect', (reason) => {
@@ -78,6 +97,7 @@ class SocketManager {
       }, this.reconnectDelay * this.reconnectAttempts)
     } else {
       console.error('❌ Max reconnection attempts reached')
+      this.fallbackMode = true
     }
   }
 
@@ -91,6 +111,58 @@ class SocketManager {
 
   isConnected(): boolean {
     return this.isConnectedState && this.socket?.connected === true
+  }
+
+  // Missing methods that were causing TypeScript errors
+  getConnectionHealth(): ConnectionHealth {
+    return {
+      connected: this.isConnectedState,
+      fallbackMode: this.fallbackMode,
+      reconnectAttempts: this.reconnectAttempts,
+      currentUrl: this.currentUrl,
+      socketId: this.socket?.id,
+      urlAttempts: this.urlAttempts,
+      availableUrls: this.availableUrls.length,
+      quality: this.isConnectedState ? 'good' : 'poor',
+      latency: 0
+    }
+  }
+
+  getConnectionState(): string {
+    if (this.isConnectedState) return 'connected'
+    if (this.fallbackMode) return 'fallback'
+    if (this.reconnectAttempts > 0) return 'connecting'
+    return 'disconnected'
+  }
+
+  forceReconnect(): void {
+    console.log('🔄 Force reconnect requested')
+    this.disconnect()
+    this.reconnectAttempts = 0
+    setTimeout(() => {
+      this.connect()
+    }, 1000)
+  }
+
+  isFallbackMode(): boolean {
+    return this.fallbackMode
+  }
+
+  // Event listener methods
+  on(event: string, callback: (...args: any[]) => void): void {
+    if (this.socket) {
+      this.socket.on(event, callback)
+    }
+  }
+
+  off(event: string, callback?: (...args: any[]) => void): void {
+    if (this.socket) {
+      if (callback) {
+        this.socket.off(event, callback)
+      } else {
+        this.socket.removeAllListeners(event)
+      }
+    }
   }
 
   // Broadcaster methods
@@ -113,16 +185,17 @@ class SocketManager {
     }
   }
 
-  sendIceCandidate(candidate: RTCIceCandidate, socketId: string) {
+  sendIceCandidate(candidate: RTCIceCandidate | RTCIceCandidateInit, socketId: string) {
     if (this.socket && this.isConnectedState) {
-      this.socket.emit('ice-candidate', { candidate: candidate.toJSON(), socketId })
+      const candidateData = candidate instanceof RTCIceCandidate ? candidate.toJSON() : candidate
+      this.socket.emit('ice-candidate', { candidate: candidateData, socketId })
     }
   }
 
   // Viewer methods
-  joinStream() {
+  joinStream(sessionId?: string) {
     if (this.socket && this.isConnectedState) {
-      this.socket.emit('join-stream')
+      this.socket.emit('join-stream', sessionId ? { sessionId } : {})
     }
   }
 
@@ -135,6 +208,25 @@ class SocketManager {
   sendAnswer(answer: RTCSessionDescriptionInit, socketId: string) {
     if (this.socket && this.isConnectedState) {
       this.socket.emit('answer', { answer, socketId })
+    }
+  }
+
+  // Stream-specific event listeners
+  onStreamOffer(callback: (data: { offer: RTCSessionDescriptionInit; from: string }) => void) {
+    if (this.socket) {
+      this.socket.on('offer-received', callback)
+    }
+  }
+
+  onStreamAnswer(callback: (data: { answer: RTCSessionDescriptionInit; from: string }) => void) {
+    if (this.socket) {
+      this.socket.on('answer-received', callback)
+    }
+  }
+
+  onStreamError(callback: (error: any) => void) {
+    if (this.socket) {
+      this.socket.on('error', callback)
     }
   }
 

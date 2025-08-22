@@ -48,8 +48,11 @@ class MuxClient {
       throw new Error('Mux credentials are required: MUX_TOKEN_ID and MUX_TOKEN_SECRET')
     }
 
-    // Use correct Mux SDK initialization
-    this.mux = new Mux(this.config.tokenId, this.config.tokenSecret)
+    // Use correct Mux SDK initialization - Fixed: removed extra parameters
+    this.mux = new Mux({
+      tokenId: this.config.tokenId,
+      tokenSecret: this.config.tokenSecret
+    })
   }
 
   // Enhanced Live Stream Management with stream key security warnings
@@ -67,7 +70,8 @@ class MuxClient {
       console.log('🎥 Creating unique Mux live stream with secure credentials...')
       console.warn('🔐 SECURITY: Stream key will be generated - treat it as a private credential!')
 
-      const liveStream = await this.mux.Video.LiveStreams.create({
+      // Fixed: Use correct property name 'video' instead of 'Video'
+      const liveStream = await this.mux.video.liveStreams.create({
         playback_policy: [options.playbackPolicy || 'public'],
         new_asset_settings: {
           playback_policy: [options.newAssetSettings?.playbackPolicy || 'public'],
@@ -126,7 +130,8 @@ class MuxClient {
 
   async getLiveStream(liveStreamId: string) {
     try {
-      const liveStream = await this.mux.Video.LiveStreams.get(liveStreamId)
+      // Fixed: Use correct property name 'video' instead of 'Video'
+      const liveStream = await this.mux.video.liveStreams.retrieve(liveStreamId)
       
       console.warn('🔐 Accessing stream with sensitive stream key - handle securely')
       
@@ -159,7 +164,8 @@ class MuxClient {
   async deleteLiveStream(liveStreamId: string) {
     try {
       console.log('🗑️ Deleting live stream - this will invalidate the stream key:', liveStreamId)
-      await this.mux.Video.LiveStreams.del(liveStreamId)
+      // Fixed: Use correct property name 'video' instead of 'Video'
+      await this.mux.video.liveStreams.del(liveStreamId)
       console.log('✅ Live stream deleted - stream key is now invalid')
       return { success: true, streamKeyInvalidated: true }
     } catch (error) {
@@ -170,8 +176,9 @@ class MuxClient {
 
   async enableLiveStream(liveStreamId: string) {
     try {
-      await this.mux.Video.LiveStreams.enable(liveStreamId)
-      const updatedStream = await this.mux.Video.LiveStreams.get(liveStreamId)
+      // Fixed: Use correct property name 'video' instead of 'Video'
+      await this.mux.video.liveStreams.enable(liveStreamId)
+      const updatedStream = await this.mux.video.liveStreams.retrieve(liveStreamId)
       return {
         id: updatedStream.id,
         status: updatedStream.status
@@ -185,8 +192,9 @@ class MuxClient {
   async disableLiveStream(liveStreamId: string) {
     try {
       console.log('⏹️ Disabling live stream (stream key remains valid):', liveStreamId)
-      await this.mux.Video.LiveStreams.disable(liveStreamId)
-      const updatedStream = await this.mux.Video.LiveStreams.get(liveStreamId)
+      // Fixed: Use correct property name 'video' instead of 'Video'
+      await this.mux.video.liveStreams.disable(liveStreamId)
+      const updatedStream = await this.mux.video.liveStreams.retrieve(liveStreamId)
       return {
         id: updatedStream.id,
         status: updatedStream.status
@@ -197,7 +205,7 @@ class MuxClient {
     }
   }
 
-  // Playback Management
+  // Playbook Management
   generatePlaybackUrl(playbackId: string, options: {
     token?: string
     domain?: string
