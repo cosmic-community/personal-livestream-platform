@@ -253,10 +253,10 @@ class MuxClient {
       // Fixed: Ensure inputs array is properly typed and handle undefined case
       const inputs: Input[] = input.url ? [{ url: input.url }] : []
       
-      // Fixed: Use correct property names and valid mp4_support value
+      // Fixed: Use correct property name 'playback_policy' instead of 'playbook_policy'
       const asset = await this.mux.Video.Assets.create({
         input: inputs,
-        playbook_policy: [input.playbackPolicy || 'public'],
+        playback_policy: [input.playbackPolicy || 'public'],
         mp4_support: input.mp4Support || 'none', // Fixed: Use valid option
         normalize_audio: input.normalizeAudio || false
       })
