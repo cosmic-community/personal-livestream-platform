@@ -1,319 +1,273 @@
 # Personal Livestream Platform
 
-A modern, real-time streaming platform built with Next.js, WebRTC, and Socket.IO. Features robust connection management, fallback mechanisms, and seamless streaming capabilities.
+A modern personal live streaming application built with Next.js 15, Mux Video, and TypeScript. Stream directly from your browser or use professional broadcasting software like OBS Studio.
 
-## 🚀 Features
+## Features
 
-- **Real-time Streaming**: WebRTC-based streaming with low latency
-- **Multiple Stream Types**: Webcam, screen sharing, or combined streams
-- **Robust Connection Management**: Automatic reconnection and fallback modes
-- **Health Monitoring**: Real-time connection and network quality assessment
-- **Responsive Design**: Works on desktop and mobile devices
-- **Content Management**: Powered by Cosmic CMS for session tracking and analytics
+- 🎥 **Professional Live Streaming** - Powered by Mux Video API
+- 📱 **Browser-based Broadcasting** - Stream directly from your browser
+- 🎛️ **OBS Studio Integration** - Use professional broadcasting software
+- 🔒 **Secure Stream Keys** - Private, secure streaming credentials
+- 📊 **Real-time Analytics** - Monitor viewer count and stream statistics
+- 🎨 **Modern UI** - Clean, responsive interface built with Tailwind CSS
+- 🔄 **Real-time Updates** - WebSocket-powered live updates
+- 📹 **HLS Playback** - High-quality video streaming with automatic quality adjustment
 
-## 🛠️ Tech Stack
+## Quick Start
 
-- **Frontend**: Next.js 15, React 18, TypeScript, Tailwind CSS
-- **Backend**: Node.js, Express, Socket.IO
-- **Real-time Communication**: WebRTC, Socket.IO
-- **Content Management**: Cosmic CMS
-- **Deployment**: Vercel (frontend), any Node.js hosting (backend)
+### Prerequisites
 
-## 📋 Prerequisites
+- Node.js 18+ or Bun
+- Mux Video account with API credentials
+- Cosmic CMS bucket (optional, for content management)
 
-- Node.js 18+ and npm/bun
-- A Cosmic CMS account and bucket
-- Modern web browser with WebRTC support
+### Installation
 
-## 🚀 Quick Start
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd personal-livestream-platform
+   ```
 
-### 1. Clone and Install
+2. **Install dependencies**
+   ```bash
+   bun install
+   ```
 
-```bash
-git clone <repository-url>
-cd personal-livestream-platform
+3. **Set up environment variables**
+   ```bash
+   cp .env.local.example .env.local
+   ```
+   
+   Edit `.env.local` with your credentials:
+   ```env
+   # Mux Video Configuration
+   MUX_TOKEN_ID=your-mux-token-id
+   MUX_TOKEN_SECRET=your-mux-token-secret
+   
+   # Cosmic CMS Configuration (optional)
+   COSMIC_BUCKET_SLUG=your-bucket-slug
+   COSMIC_READ_KEY=your-read-key
+   COSMIC_WRITE_KEY=your-write-key
+   
+   # Server Configuration
+   NEXT_PUBLIC_SOCKET_URL=ws://localhost:3001
+   ```
 
-# Install frontend dependencies
-bun install
+4. **Start the development servers**
+   
+   Terminal 1 (Next.js frontend):
+   ```bash
+   bun run dev
+   ```
+   
+   Terminal 2 (WebSocket server):
+   ```bash
+   cd server
+   bun install
+   bun run dev
+   ```
 
-# Install server dependencies
-bun run install:server
-```
+5. **Open your browser**
+   - Frontend: http://localhost:3000
+   - WebSocket server: http://localhost:3001
 
-### 2. Environment Setup
+## Usage
 
-Create `.env.local` in the project root:
+### Creating Your First Stream
 
-```bash
-# Cosmic CMS Configuration
-COSMIC_BUCKET_SLUG=your-bucket-slug-here
-COSMIC_READ_KEY=your-cosmic-read-key-here
-COSMIC_WRITE_KEY=your-cosmic-write-key-here
+1. **Navigate to the Dashboard**
+   - Open http://localhost:3000 in your browser
+   - Click "Create New Stream" to generate a new streaming endpoint
 
-# Streaming Server
+2. **Get Your Stream Credentials**
+   - Copy the RTMP server URL and stream key
+   - **Important**: Keep your stream key private and secure
+
+3. **Start Streaming**
+   
+   **Option A: Browser Streaming**
+   - Use the built-in browser streaming controls
+   - Grant camera/microphone permissions when prompted
+   
+   **Option B: OBS Studio**
+   - Open OBS Studio
+   - Go to Settings > Stream
+   - Set Service to "Custom"
+   - Enter the RTMP server URL and stream key
+   - Click "Start Streaming"
+
+4. **Watch Your Stream**
+   - Navigate to the watch page or use the HLS URL provided
+   - Share the watch page URL with viewers
+
+### Stream Management
+
+- **View All Streams**: See all your created streams in the dashboard
+- **Delete Streams**: Remove old or unused streams
+- **Reset Stream Keys**: Generate new stream keys if compromised
+- **Monitor Analytics**: View viewer count and stream statistics
+
+## Architecture
+
+### Frontend (Next.js 15)
+- **Framework**: Next.js 15 with App Router
+- **Language**: TypeScript with strict type checking
+- **Styling**: Tailwind CSS with custom components
+- **State Management**: React hooks with custom streaming hooks
+- **Video**: Mux Video API integration with HLS.js
+
+### Backend Services
+- **Streaming**: Mux Video API for live stream management
+- **WebSocket**: Socket.IO server for real-time communication
+- **Content**: Cosmic CMS for metadata and content management
+
+### Key Components
+
+- `MuxStreamingDashboard` - Main dashboard for stream management
+- `MuxVideoPlayer` - HLS video player with Mux integration
+- `useMux` - React hook for Mux API operations
+- `MuxClient` - Mux API client with enhanced security features
+
+## Security Features
+
+### Stream Key Protection
+- Stream keys are treated as sensitive credentials
+- Automatic security warnings and best practice reminders
+- Option to hide/show stream keys in the interface
+- Easy stream key reset functionality
+
+### Best Practices Enforced
+- Never log full stream keys in console
+- Secure clipboard operations for copying credentials
+- Visual warnings about stream key privacy
+- Automatic cleanup of disconnected streams
+
+## API Routes
+
+### Mux Integration
+- `POST /api/mux/streams` - Create new live stream
+- `GET /api/mux/streams` - List all streams
+- `GET /api/mux/streams/[id]` - Get specific stream details
+- `DELETE /api/mux/streams/[id]` - Delete stream
+- `GET /api/mux/streams/[id]/status` - Get stream status
+- `POST /api/mux/webhook` - Handle Mux webhooks
+
+## Configuration
+
+### Environment Variables
+
+```env
+# Mux Video (Required)
+MUX_TOKEN_ID=your-mux-token-id
+MUX_TOKEN_SECRET=your-mux-token-secret
+
+# Optional: Enhanced Mux features
+MUX_WEBHOOK_SECRET=your-webhook-secret
+MUX_SIGNING_KEY_ID=your-signing-key-id
+MUX_SIGNING_KEY_SECRET=your-signing-key-secret
+
+# Cosmic CMS (Optional)
+COSMIC_BUCKET_SLUG=your-bucket-slug
+COSMIC_READ_KEY=your-read-key
+COSMIC_WRITE_KEY=your-write-key
+
+# Server Configuration
 NEXT_PUBLIC_SOCKET_URL=ws://localhost:3001
+PORT=3001
+FRONTEND_URL=http://localhost:3000
 
 # Development
 NODE_ENV=development
+NEXT_PUBLIC_DEBUG_STREAMING=true
 ```
 
-### 3. Start Development Servers
+### Streaming Settings
+
+Default stream configuration:
+- **Playback Policy**: Public (no authentication required)
+- **Reduced Latency**: Enabled (low-latency streaming)
+- **Reconnect Window**: 60 seconds
+- **MP4 Support**: Standard quality recordings
+- **Audio Normalization**: Enabled
+
+## Deployment
+
+### Vercel (Recommended)
+
+1. **Deploy to Vercel**
+   ```bash
+   vercel --prod
+   ```
+
+2. **Set Environment Variables**
+   - Add all required environment variables in Vercel dashboard
+   - Update `NEXT_PUBLIC_SOCKET_URL` to your WebSocket server URL
+
+3. **Deploy WebSocket Server**
+   - Deploy the `server/` directory to a service like Railway, Render, or Heroku
+   - Update the WebSocket URL in your environment variables
+
+### Other Platforms
+
+The application can be deployed to any platform that supports:
+- Next.js applications
+- Node.js WebSocket servers
+- Environment variable configuration
+
+## Development
+
+### Scripts
 
 ```bash
-# Start both frontend and backend servers
-bun run dev
+# Frontend development
+bun run dev          # Start Next.js dev server
+bun run build        # Build for production
+bun run start        # Start production server
+bun run lint         # Run ESLint
+bun run type-check   # Run TypeScript checks
 
-# Or start them separately:
-bun run dev:client  # Frontend (http://localhost:3000)
-bun run dev:server  # Backend (http://localhost:3001)
+# WebSocket server (in server/ directory)
+bun run dev          # Start development server with nodemon
+bun run start        # Start production server
 ```
 
-### 4. Access the Application
+### Code Structure
 
-- **Broadcaster Dashboard**: http://localhost:3000
-- **Stream Viewer**: http://localhost:3000/watch
-- **Server Health**: http://localhost:3001/health
-- **Stream API**: http://localhost:3001/api/streams
-
-## 🔧 Configuration
-
-### Streaming Server URLs
-
-The client will attempt to connect to streaming servers in this order:
-
-1. `NEXT_PUBLIC_SOCKET_URL` (from environment)
-2. `ws://localhost:3001`
-3. `ws://127.0.0.1:3001`
-4. `ws://localhost:8080`
-5. `ws://127.0.0.1:8080`
-
-If all connections fail, the system automatically enables fallback mode for local testing.
-
-### WebRTC Configuration
-
-The platform uses multiple STUN servers for optimal connectivity:
-
-- Google STUN servers (primary)
-- Twilio STUN servers (backup)
-- Cloudflare STUN servers (backup)
-
-### Media Constraints
-
-**Webcam Streaming:**
-- Resolution: 640x480 to 1920x1080 (ideal: 1280x720)
-- Frame Rate: 15-60 FPS (ideal: 30 FPS)
-- Audio: Echo cancellation, noise suppression enabled
-
-**Screen Sharing:**
-- Resolution: 1280x720 to 3840x2160 (ideal: 1920x1080)
-- Frame Rate: 15-60 FPS (ideal: 30 FPS)
-- Cursor: Always visible
-
-## 🏗️ Architecture
-
-### Frontend Components
-
-- **BroadcasterDashboard**: Main streaming interface with controls and preview
-- **StreamViewer**: Viewer interface for watching live streams
-- **StreamControls**: Start/stop streaming and source toggle controls
-- **StreamPreview**: Live preview of broadcaster's stream
-- **StreamStats**: Real-time statistics and analytics
-
-### Backend Services
-
-- **Socket.IO Server**: Real-time communication and signaling
-- **Connection Manager**: Health monitoring and retry logic
-- **WebRTC Handler**: Peer connection management
-- **Stream Session Manager**: Session tracking and analytics
-
-### Connection Flow
-
-1. **Initialization**: Client connects to Socket.IO server
-2. **Health Check**: System tests network and device capabilities
-3. **Stream Start**: Broadcaster gets media stream and creates WebRTC offer
-4. **Signaling**: Server coordinates WebRTC negotiation between peers
-5. **Streaming**: Direct peer-to-peer media transmission
-6. **Monitoring**: Continuous health and quality monitoring
-
-## 🔍 Troubleshooting
-
-### Connection Issues
-
-**"Unable to connect to streaming server"**
-- Ensure the Node.js server is running on port 3001
-- Check firewall settings
-- Try refreshing the page
-- The system will automatically enable fallback mode if needed
-
-**"WebRTC not supported"**
-- Use a modern browser (Chrome, Firefox, Safari, Edge)
-- Ensure browser permissions for camera/microphone
-- Check if running on HTTPS in production
-
-**"Media access denied"**
-- Grant camera/microphone permissions in browser
-- Ensure devices are not in use by other applications
-- Try different devices if available
-
-### Performance Issues
-
-**High latency or poor quality**
-- Check network connection speed
-- Close other bandwidth-intensive applications
-- Switch to a better network if possible
-- The system will automatically adjust quality based on connection
-
-**Frequent disconnections**
-- Check network stability
-- Ensure consistent power supply
-- Try using ethernet instead of WiFi
-- Check for browser extensions that might interfere
-
-### System Requirements
-
-**Minimum Requirements:**
-- Chrome 60+, Firefox 55+, Safari 11+, Edge 79+
-- 2 Mbps upload speed for streaming
-- 1 Mbps download speed for viewing
-- Camera and microphone for broadcasting
-
-**Recommended:**
-- Chrome 90+, Firefox 90+, Safari 14+, Edge 90+
-- 5 Mbps upload speed for high-quality streaming
-- 3 Mbps download speed for viewing
-- Hardware-accelerated video encoding support
-
-## 📊 Monitoring and Analytics
-
-### Health Dashboard
-
-The system provides real-time monitoring of:
-
-- **Connection Status**: Server connectivity and fallback state
-- **Device Status**: Camera, microphone, and screen sharing availability
-- **Network Status**: Latency, bandwidth, and server reachability
-- **Stream Statistics**: Viewer count, session duration, quality metrics
-
-### API Endpoints
-
-- `GET /health` - Server health and status
-- `GET /api/streams` - List of active streams
-- WebSocket events for real-time updates
-
-## 🚀 Deployment
-
-### Frontend (Vercel)
-
-```bash
-# Build and deploy to Vercel
-vercel --prod
-
-# Set environment variables in Vercel dashboard:
-# - COSMIC_BUCKET_SLUG
-# - COSMIC_READ_KEY
-# - COSMIC_WRITE_KEY
-# - NEXT_PUBLIC_SOCKET_URL (your production server URL)
+```
+├── app/                    # Next.js app directory
+│   ├── api/               # API routes
+│   ├── watch/             # Stream viewer page
+│   └── page.tsx           # Main dashboard
+├── components/            # React components
+├── hooks/                 # Custom React hooks
+├── lib/                   # Utility libraries
+├── server/                # WebSocket server
+└── types/                 # TypeScript definitions
 ```
 
-### Backend (Any Node.js Hosting)
-
-```bash
-cd server
-npm install --production
-npm start
-
-# Environment variables needed:
-# - PORT (default: 3001)
-# - FRONTEND_URL (your frontend domain)
-# - NODE_ENV=production
-```
-
-### Production Considerations
-
-- Use HTTPS for both frontend and backend in production
-- Configure proper CORS origins
-- Set up monitoring and logging
-- Consider using a reverse proxy (nginx) for the backend
-- Configure firewall rules for WebSocket connections
-
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🆘 Support
+## Support
 
-If you encounter issues:
+- **Documentation**: Check this README and inline code comments
+- **Issues**: Create an issue on GitHub for bugs or feature requests
+- **Mux Support**: Visit [Mux Documentation](https://docs.mux.com/) for API help
 
-1. Check the troubleshooting section above
-2. Review the browser console for error messages
-3. Check the server logs for backend issues
-4. Open an issue with detailed information about your setup
+## Acknowledgments
 
-## 🛣️ Roadmap
-
-- [ ] Multi-room streaming support
-- [ ] Stream recording and playback
-- [ ] Advanced analytics dashboard
-- [ ] Mobile app development
-- [ ] TURN server integration for better connectivity
-- [ ] Streaming to external platforms (YouTube, Twitch)
-```
-
-I've implemented a comprehensive solution to resolve your streaming server connectivity issues:
-
-## 🔧 **What I've Fixed:**
-
-### 1. **Complete Node.js Streaming Server**
-- Created a full-featured Socket.IO server (`server/index.js`) with robust error handling
-- Multiple connection endpoints and fallback URLs
-- Comprehensive WebRTC signaling support
-- Health monitoring and automatic cleanup
-
-### 2. **Enhanced Connection Management**
-- New `ConnectionManager` class with real-time health monitoring
-- Automatic network performance testing
-- Progressive connection retry with backoff
-- Detailed connection quality assessment
-
-### 3. **Improved Configuration**
-- Centralized stream configuration (`lib/stream-config.ts`)
-- Multiple STUN servers for better connectivity
-- Adaptive quality settings based on connection health
-- Comprehensive error handling and logging
-
-### 4. **Robust Fallback System**
-- Enhanced offline mode with realistic behavior
-- Multiple server URL attempts before fallback
-- Clear user feedback for connection states
-- Automatic recovery when connection restored
-
-### 5. **Development Setup**
-- Complete environment configuration (`.env.local`)
-- Concurrent development scripts for frontend + backend
-- Updated package.json with all necessary dependencies
-- Comprehensive README with troubleshooting guide
-
-## 🚀 **To Get Streaming Working:**
-
-1. **Install server dependencies:**
-   ```bash
-   bun run install:server
-   ```
-
-2. **Set up your environment:**
-   ```bash
-   cp .env.example .env.local
-   # Edit .env.local with your Cosmic CMS credentials
-   ```
-
-3. **Start both servers:**
-   ```bash
-   bun run dev
+- **Mux Video** - Professional video streaming infrastructure
+- **Next.js** - React framework for production applications
+- **Socket.IO** - Real-time WebSocket communication
+- **Tailwind CSS** - Utility-first CSS framework
+- **TypeScript** - Type-safe JavaScript development

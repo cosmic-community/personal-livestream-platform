@@ -87,7 +87,7 @@ export default function MuxStreamingDashboard() {
         reconnectWindow: 60,
         newAssetSettings: {
           playbackPolicy: 'public',
-          mp4Support: 'capped-1080p',
+          mp4Support: 'standard',
           normalizeAudio: true
         }
       })
@@ -114,7 +114,6 @@ export default function MuxStreamingDashboard() {
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text)
-      // You could add a toast notification here
       console.log('✅ Copied to clipboard')
     } catch (error) {
       console.error('❌ Failed to copy to clipboard:', error)
@@ -127,9 +126,7 @@ export default function MuxStreamingDashboard() {
     }
     
     try {
-      // Note: This would require implementing a reset endpoint
       console.log('🔄 Stream key reset requested for:', streamId)
-      // await resetStreamKey(streamId)
       await refreshStreams()
     } catch (error) {
       console.error('❌ Failed to reset stream key:', error)

@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, useEffect, useCallback } from 'react'
 
 interface MuxStreamConfig {
@@ -6,7 +8,7 @@ interface MuxStreamConfig {
   reconnectWindow?: number
   newAssetSettings?: {
     playbackPolicy?: 'public' | 'signed'
-    mp4Support?: 'none' | 'capped-1080p' | 'standard'
+    mp4Support?: 'none' | 'standard'
     normalizeAudio?: boolean
   }
 }
@@ -62,7 +64,7 @@ export function useMux(): UseMuxReturn {
           reconnectWindow: config.reconnectWindow || 60,
           newAssetSettings: config.newAssetSettings || {
             playbackPolicy: 'public',
-            mp4Support: 'capped-1080p',
+            mp4Support: 'standard',
             normalizeAudio: true
           }
         })
@@ -70,7 +72,7 @@ export function useMux(): UseMuxReturn {
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.message || 'Failed to create stream')
+        throw new Error(errorData.error || 'Failed to create stream')
       }
 
       const stream: MuxStream = await response.json()
@@ -103,7 +105,7 @@ export function useMux(): UseMuxReturn {
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.message || 'Failed to delete stream')
+        throw new Error(errorData.error || 'Failed to delete stream')
       }
 
       setStreams(prev => prev.filter(stream => stream.id !== streamId))
@@ -152,7 +154,7 @@ export function useMux(): UseMuxReturn {
       
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.message || 'Failed to fetch streams')
+        throw new Error(errorData.error || 'Failed to fetch streams')
       }
 
       const streamsData: MuxStream[] = await response.json()
@@ -160,14 +162,13 @@ export function useMux(): UseMuxReturn {
 
       // Set active stream if there's only one or find the most recent
       if (streamsData.length === 1) {
-        setActiveStream(streamsData[0] ?? null)
+        setActiveStream(streamsData[0] || null)
       } else if (streamsData.length > 1 && !activeStream) {
         // Find most recently created stream
         const mostRecent = streamsData.reduce((latest, current) => 
           new Date(current.createdAt) > new Date(latest.createdAt) ? current : latest
         )
-        // Fixed: Ensure mostRecent is properly typed and handle the case where it might be undefined
-        setActiveStream(mostRecent ?? null)
+        setActiveStream(mostRecent || null)
       }
 
     } catch (err) {

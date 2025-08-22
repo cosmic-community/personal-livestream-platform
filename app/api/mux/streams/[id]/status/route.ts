@@ -16,15 +16,20 @@ export async function GET(
     
     const stream = await muxClient.getLiveStream(id)
     
-    return NextResponse.json({ 
+    return NextResponse.json({
       status: stream.status,
-      isLive: stream.status === 'active'
+      isLive: stream.status === 'active',
+      timestamp: new Date().toISOString()
     })
   } catch (error) {
     console.error('Failed to get stream status:', error)
     return NextResponse.json(
-      { error: 'Failed to get stream status' },
-      { status: 500 }
+      { 
+        error: 'Failed to get stream status',
+        status: 'disconnected',
+        isLive: false
+      },
+      { status: 404 }
     )
   }
 }
