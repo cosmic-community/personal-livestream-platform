@@ -9,7 +9,7 @@ import {
   combineStreams,
   monitorConnectionQuality
 } from '@/lib/webrtc'
-import { StreamState, StreamType, StreamError, BroadcasterState } from '@/types'
+import { StreamState, StreamType, StreamError, BroadcasterState, StreamStats, createStreamState } from '@/types'
 
 interface StreamManagerConfig {
   debug?: boolean
@@ -22,29 +22,7 @@ interface StreamManagerConfig {
 
 export class StreamManager {
   private config: StreamManagerConfig
-  private state: BroadcasterState = {
-    isStreaming: false,
-    isLive: false,
-    isConnecting: false,
-    streamType: 'webcam',
-    webcamEnabled: false,
-    screenEnabled: false,
-    viewerCount: 0,
-    streamQuality: 'auto',
-    peerConnections: new Map<string, RTCPeerConnection>(),
-    stats: {
-      bytesReceived: 0,
-      bytesSent: 0,
-      packetsLost: 0,
-      jitter: 0,
-      rtt: 0,
-      bandwidth: 0,
-      quality: 'poor',
-      viewerCount: 0,
-      duration: 0
-    },
-    errors: []
-  }
+  private state: BroadcasterState = createStreamState() as BroadcasterState
 
   private localStreams: Map<StreamType, MediaStream> = new Map()
   private combinedStream: MediaStream | null = null
@@ -234,30 +212,8 @@ export class StreamManager {
         this.combinedStream = null
       }
 
-      // Reset state
-      this.state = {
-        isStreaming: false,
-        isLive: false,
-        isConnecting: false,
-        streamType: 'webcam',
-        webcamEnabled: false,
-        screenEnabled: false,
-        viewerCount: 0,
-        streamQuality: 'auto',
-        peerConnections: new Map<string, RTCPeerConnection>(),
-        stats: {
-          bytesReceived: 0,
-          bytesSent: 0,
-          packetsLost: 0,
-          jitter: 0,
-          rtt: 0,
-          bandwidth: 0,
-          quality: 'poor',
-          viewerCount: 0,
-          duration: 0
-        },
-        errors: []
-      }
+      // Reset state - Fixed: Use createStreamState to ensure all required properties
+      this.state = createStreamState() as BroadcasterState
 
       this.emitStateChange()
       this.log('Stream stopped successfully')
@@ -284,11 +240,13 @@ export class StreamManager {
 
   private async getScreenStream(): Promise<MediaStream | undefined> {
     try {
-      // Fixed: Proper typing for getDisplayMedia
+      // Fixed: Use proper MediaStreamConstraints for getDisplayMedia
       const constraints: DisplayMediaStreamConstraints = {
         video: {
-          mediaSource: 'screen'
-        } as MediaTrackConstraints & { mediaSource?: string },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 }
+        } as MediaTrackConstraints,
         audio: true
       }
       const stream = await navigator.mediaDevices.getDisplayMedia(constraints)

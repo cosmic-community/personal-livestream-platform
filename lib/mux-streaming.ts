@@ -1,5 +1,5 @@
 import { getMuxClient } from './mux-client'
-import { StreamState, StreamError } from '@/types'
+import { StreamState, StreamError, createStreamState } from '@/types'
 
 interface MuxStreamConfig {
   playbackPolicy?: 'public' | 'signed'
@@ -329,7 +329,8 @@ export class MuxStreamingService {
   private handleStreamActive(data: any) {
     console.log('🟢 Stream became active:', data.id)
     
-    const streamState: StreamState = {
+    // Fixed: Use createStreamState with proper overrides
+    const streamState: StreamState = createStreamState({
       isLive: true,
       isConnecting: false,
       streamType: 'webcam',
@@ -337,7 +338,7 @@ export class MuxStreamingService {
       screenEnabled: false,
       viewerCount: 0,
       sessionId: data.id
-    }
+    })
     
     this.listeners.onStateChange?.(streamState)
   }
@@ -345,7 +346,8 @@ export class MuxStreamingService {
   private handleStreamIdle(data: any) {
     console.log('🟡 Stream became idle:', data.id)
     
-    const streamState: StreamState = {
+    // Fixed: Use createStreamState with proper overrides
+    const streamState: StreamState = createStreamState({
       isLive: false,
       isConnecting: false,
       streamType: 'webcam',
@@ -353,7 +355,7 @@ export class MuxStreamingService {
       screenEnabled: false,
       viewerCount: 0,
       sessionId: data.id
-    }
+    })
     
     this.listeners.onStateChange?.(streamState)
   }
@@ -361,7 +363,8 @@ export class MuxStreamingService {
   private handleStreamDisconnected(data: any) {
     console.log('🔴 Stream disconnected:', data.id)
     
-    const streamState: StreamState = {
+    // Fixed: Use createStreamState with proper overrides
+    const streamState: StreamState = createStreamState({
       isLive: false,
       isConnecting: false,
       streamType: 'webcam',
@@ -369,7 +372,7 @@ export class MuxStreamingService {
       screenEnabled: false,
       viewerCount: 0,
       sessionId: data.id
-    }
+    })
     
     this.listeners.onStateChange?.(streamState)
   }

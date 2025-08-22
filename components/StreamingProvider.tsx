@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { StreamingCore } from '@/lib/streaming-core'
-import { StreamState, StreamType, StreamError } from '@/types'
+import { StreamState, StreamType, StreamError, createStreamState } from '@/types'
 
 interface StreamingContextType {
   // State
@@ -43,14 +43,14 @@ export function StreamingProvider({
   debug = false 
 }: StreamingProviderProps) {
   const [streamingCore] = useState(() => new StreamingCore({ serverUrl, debug }))
-  const [streamState, setStreamState] = useState<StreamState>({
+  const [streamState, setStreamState] = useState<StreamState>(createStreamState({
     isLive: false,
     isConnecting: false,
     streamType: 'webcam',
     webcamEnabled: false,
     screenEnabled: false,
     viewerCount: 0
-  })
+  }))
   const [error, setError] = useState<StreamError | null>(null)
   const [isSupported, setIsSupported] = useState(true)
 

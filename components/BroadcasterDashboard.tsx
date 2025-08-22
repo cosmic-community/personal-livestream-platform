@@ -1,20 +1,20 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { StreamState, StreamType } from '@/types'
+import { StreamState, StreamType, createStreamState } from '@/types'
 import StreamControls from '@/components/StreamControls'
 import StreamPreview from '@/components/StreamPreview'
 import StreamStats from '@/components/StreamStats'
 
 export default function BroadcasterDashboard() {
-  const [streamState, setStreamState] = useState<StreamState>({
+  const [streamState, setStreamState] = useState<StreamState>(createStreamState({
     isLive: false,
     isConnecting: false,
     streamType: 'webcam',
     webcamEnabled: false,
     screenEnabled: false,
     viewerCount: 0
-  })
+  }))
 
   const [error, setError] = useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
@@ -291,15 +291,15 @@ export default function BroadcasterDashboard() {
       streamRef.current = undefined
     }
 
-    // Reset state
-    setStreamState({
+    // Reset state - Fixed: Use createStreamState to ensure all properties are included
+    setStreamState(createStreamState({
       isLive: false,
       isConnecting: false,
       streamType: 'webcam',
       webcamEnabled: false,
       screenEnabled: false,
       viewerCount: 0
-    })
+    }))
     
     sessionIdRef.current = null
     setError(null)

@@ -69,7 +69,7 @@ export interface MediaConstraints {
   audio?: MediaTrackConstraints | boolean
 }
 
-// Fixed: Unified StreamState interface that matches BroadcasterState
+// Main StreamState interface - now includes ALL required properties
 export interface StreamState {
   isStreaming: boolean
   isLive: boolean
@@ -254,4 +254,34 @@ export interface WebRTCAnswer extends RTCSessionDescriptionInit {
 
 export interface WebRTCIceCandidate extends RTCIceCandidateInit {
   from?: string
+}
+
+// Helper function to create complete StreamState object
+export function createStreamState(overrides: Partial<StreamState> = {}): StreamState {
+  const defaultStats: StreamStats = {
+    bytesReceived: 0,
+    bytesSent: 0,
+    packetsLost: 0,
+    jitter: 0,
+    rtt: 0,
+    bandwidth: 0,
+    quality: 'poor',
+    viewerCount: 0,
+    duration: 0
+  }
+
+  return {
+    isStreaming: false,
+    isLive: false,
+    isConnecting: false,
+    streamType: 'webcam',
+    webcamEnabled: false,
+    screenEnabled: false,
+    viewerCount: 0,
+    streamQuality: 'auto',
+    peerConnections: new Map<string, RTCPeerConnection>(),
+    stats: defaultStats,
+    errors: [],
+    ...overrides
+  }
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { StreamState, StreamType, StreamError, BroadcasterState } from '@/types'
+import { StreamState, StreamType, StreamError, BroadcasterState, createStreamState } from '@/types'
 import { StreamManager } from '@/lib/stream-manager'
 import { checkWebRTCSupport } from '@/lib/webrtc'
 import { socketManager } from '@/lib/socket'
@@ -12,14 +12,14 @@ interface UseStreamConfig {
 }
 
 export function useStream(config: UseStreamConfig = {}) {
-  const [streamState, setStreamState] = useState<StreamState>({
+  const [streamState, setStreamState] = useState<StreamState>(createStreamState({
     isLive: false,
     isConnecting: false,
     streamType: 'webcam',
     webcamEnabled: false,
     screenEnabled: false,
     viewerCount: 0
-  })
+  }))
 
   const [error, setError] = useState<StreamError | null>(null)
   const [isSupported, setIsSupported] = useState(true)
@@ -40,18 +40,25 @@ export function useStream(config: UseStreamConfig = {}) {
       return
     }
 
-    // Create stream manager - Fix: Change condition from if to if not
+    // Create stream manager - Fixed: Only create if it doesn't exist
     if (!streamManagerRef.current) {
       streamManagerRef.current = new StreamManager({
         onStateChange: (state: BroadcasterState) => {
-          // Convert BroadcasterState to StreamState
+          // Convert BroadcasterState to StreamState - Fixed: Include all required properties
           const streamState: StreamState = {
+            isStreaming: state.isStreaming,
             isLive: state.isLive,
             isConnecting: state.isConnecting,
             streamType: state.streamType,
             webcamEnabled: state.webcamEnabled,
             screenEnabled: state.screenEnabled,
             viewerCount: state.viewerCount,
+            streamQuality: state.streamQuality,
+            currentSession: state.currentSession,
+            mediaStream: state.mediaStream,
+            peerConnections: state.peerConnections,
+            stats: state.stats,
+            errors: state.errors,
             sessionId: state.currentSession?.id,
             error: state.errors.length > 0 ? state.errors[state.errors.length - 1]?.message : undefined
           }

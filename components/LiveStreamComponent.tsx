@@ -165,14 +165,15 @@ export default function LiveStreamComponent({
       
       let stream: MediaStream
       if (streamType === 'screen') {
-        // Fixed: Proper typing for screen capture
-        const constraints: DisplayMediaStreamConstraints = {
+        // Fixed: Use proper MediaStreamConstraints instead of DisplayMediaStreamConstraints
+        stream = await navigator.mediaDevices.getDisplayMedia({
           video: {
-            mediaSource: 'screen'
-          } as MediaTrackConstraints & { mediaSource?: string },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30 }
+          } as MediaTrackConstraints,
           audio: true
-        }
-        stream = await navigator.mediaDevices.getDisplayMedia(constraints)
+        })
       } else {
         // Fixed: Proper typing for user media
         const constraints: MediaStreamConstraints = {

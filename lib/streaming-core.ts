@@ -1,7 +1,7 @@
 import { socketManager } from '@/lib/socket'
 import { MediaHandler } from '@/lib/media-handler'
 import { checkWebRTCSupport } from '@/lib/webrtc'
-import { StreamState, StreamType, StreamError } from '@/types'
+import { StreamState, StreamType, StreamError, createStreamState } from '@/types'
 
 interface StreamingConfig {
   serverUrl?: string
@@ -13,14 +13,14 @@ export class StreamingCore {
   private mediaHandler: MediaHandler
   private isInitialized = false
   private currentStream?: MediaStream
-  private streamState: StreamState = {
+  private streamState: StreamState = createStreamState({
     isLive: false,
     isConnecting: false,
     streamType: 'webcam',
     webcamEnabled: false,
     screenEnabled: false,
     viewerCount: 0
-  }
+  })
   
   // Event handlers
   private onStateChangeCb?: (state: StreamState) => void
@@ -340,12 +340,16 @@ export class StreamingCore {
     
     this.mediaHandler.stopAllStreams()
     
-    this.streamState.isLive = false
-    this.streamState.isConnecting = false
-    this.streamState.webcamEnabled = false
-    this.streamState.screenEnabled = false
-    this.streamState.viewerCount = 0
-    this.streamState.sessionId = undefined
+    // Fixed: Use createStreamState to reset all properties correctly
+    this.streamState = createStreamState({
+      isLive: false,
+      isConnecting: false,
+      streamType: 'webcam',
+      webcamEnabled: false,
+      screenEnabled: false,
+      viewerCount: 0,
+      sessionId: undefined
+    })
     
     this.emitStateChange()
   }
