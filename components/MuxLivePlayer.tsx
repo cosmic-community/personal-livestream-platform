@@ -179,14 +179,13 @@ export default function MuxLivePlayer({
         </div>
       )}
 
-      {/* Mux Player */}
+      {/* Mux Player - Fixed: Removed unsupported controls prop */}
       <MuxPlayer
         ref={playerRef}
         playbackId={playbackId}
         streamType="live"
         autoPlay={autoPlay}
         muted={muted}
-        controls={controls}
         style={{
           height: '100%',
           width: '100%',
