@@ -52,11 +52,12 @@ export interface StreamStats {
   latency: number
 }
 
-// Added missing StreamStatsProps interface
+// Fixed StreamStatsProps interface to include stats property
 export interface StreamStatsProps {
   session: StreamSession | null
   isLive: boolean
   viewerCount: number
+  stats?: StreamStats
 }
 
 // Added missing ViewerState interface

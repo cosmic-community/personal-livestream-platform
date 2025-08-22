@@ -6,6 +6,8 @@ import { socketManager } from '@/lib/socket'
 interface ConnectionStatusProps {
   showDetails?: boolean
   className?: string
+  isConnected?: boolean
+  connectionState?: string
 }
 
 interface ConnectionHealth {
@@ -18,11 +20,20 @@ interface ConnectionHealth {
   availableUrls: number
 }
 
-export default function ConnectionStatus({ showDetails = false, className = '' }: ConnectionStatusProps) {
+export default function ConnectionStatus({ 
+  showDetails = false, 
+  className = '', 
+  isConnected: propIsConnected,
+  connectionState: propConnectionState 
+}: ConnectionStatusProps) {
   const [connectionHealth, setConnectionHealth] = useState<ConnectionHealth | null>(null)
   const [connectionState, setConnectionState] = useState<string>('disconnected')
   const [isExpanded, setIsExpanded] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<string>('')
+
+  // Use prop values if provided, otherwise use internal state
+  const effectiveConnectionState = propConnectionState || connectionState
+  const effectiveIsConnected = propIsConnected !== undefined ? propIsConnected : connectionHealth?.connected || false
 
   useEffect(() => {
     // Get initial status
@@ -55,7 +66,7 @@ export default function ConnectionStatus({ showDetails = false, className = '' }
     setTimeout(updateStatus, 1000)
   }
 
-  const getStatusColor = (state: string, fallbackMode: boolean) => {
+  const getStatusColor = (state: string, fallbackMode: boolean = false) => {
     if (fallbackMode) return 'text-yellow-600 bg-yellow-100'
     
     switch (state) {
@@ -66,7 +77,7 @@ export default function ConnectionStatus({ showDetails = false, className = '' }
     }
   }
 
-  const getStatusText = (state: string, fallbackMode: boolean) => {
+  const getStatusText = (state: string, fallbackMode: boolean = false) => {
     if (fallbackMode) return 'Offline Mode'
     
     switch (state) {
@@ -77,7 +88,7 @@ export default function ConnectionStatus({ showDetails = false, className = '' }
     }
   }
 
-  const getStatusIcon = (state: string, fallbackMode: boolean) => {
+  const getStatusIcon = (state: string, fallbackMode: boolean = false) => {
     if (fallbackMode) {
       return (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -109,7 +120,7 @@ export default function ConnectionStatus({ showDetails = false, className = '' }
     }
   }
 
-  if (!connectionHealth) {
+  if (!connectionHealth && !propConnectionState) {
     return (
       <div className={`flex items-center gap-2 ${className}`}>
         <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
@@ -118,9 +129,9 @@ export default function ConnectionStatus({ showDetails = false, className = '' }
     )
   }
 
-  const statusColor = getStatusColor(connectionState, connectionHealth.fallbackMode)
-  const statusText = getStatusText(connectionState, connectionHealth.fallbackMode)
-  const statusIcon = getStatusIcon(connectionState, connectionHealth.fallbackMode)
+  const statusColor = getStatusColor(effectiveConnectionState, connectionHealth?.fallbackMode)
+  const statusText = getStatusText(effectiveConnectionState, connectionHealth?.fallbackMode)
+  const statusIcon = getStatusIcon(effectiveConnectionState, connectionHealth?.fallbackMode)
 
   return (
     <div className={`space-y-2 ${className}`}>
@@ -137,7 +148,7 @@ export default function ConnectionStatus({ showDetails = false, className = '' }
             <span>{statusText}</span>
           </div>
           
-          {connectionHealth.fallbackMode && (
+          {connectionHealth?.fallbackMode && (
             <span className="text-xs text-yellow-600 bg-yellow-50 px-2 py-1 rounded">
               Development Mode
             </span>
@@ -145,7 +156,7 @@ export default function ConnectionStatus({ showDetails = false, className = '' }
         </div>
 
         <div className="flex items-center gap-2">
-          {connectionHealth.reconnectAttempts > 0 && (
+          {connectionHealth && connectionHealth.reconnectAttempts > 0 && (
             <span className="text-xs text-gray-500">
               {connectionHealth.reconnectAttempts} retries
             </span>
@@ -171,13 +182,13 @@ export default function ConnectionStatus({ showDetails = false, className = '' }
       </div>
 
       {/* Detailed Information */}
-      {(isExpanded || showDetails) && (
+      {(isExpanded || showDetails) && connectionHealth && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
           {/* Connection Details */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
             <div>
               <div className="text-gray-500 text-xs uppercase tracking-wide">Status</div>
-              <div className="font-medium capitalize">{connectionState}</div>
+              <div className="font-medium capitalize">{effectiveConnectionState}</div>
             </div>
             
             <div>
@@ -256,7 +267,7 @@ export default function ConnectionStatus({ showDetails = false, className = '' }
               Refresh Status
             </button>
             
-            {!connectionHealth.connected && (
+            {!effectiveIsConnected && (
               <button
                 onClick={handleReconnect}
                 className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"

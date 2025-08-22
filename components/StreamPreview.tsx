@@ -1,12 +1,15 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { StreamType } from '@/types'
 
 interface StreamPreviewProps {
   stream: MediaStream | null | undefined
+  isLive?: boolean
+  streamType?: StreamType
 }
 
-export default function StreamPreview({ stream }: StreamPreviewProps) {
+export default function StreamPreview({ stream, isLive = false, streamType = 'webcam' }: StreamPreviewProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
@@ -44,14 +47,24 @@ export default function StreamPreview({ stream }: StreamPreviewProps) {
       />
       <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-3 py-1 rounded-full text-sm font-medium">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-          Preview
+          <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`}></div>
+          {isLive ? 'LIVE' : 'Preview'}
         </div>
       </div>
       
       {/* Stream info overlay */}
-      <div className="absolute bottom-4 right-4 bg-black bg-opacity-70 text-white px-3 py-1 rounded-full text-sm">
+      <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 text-white px-3 py-1 rounded-full text-sm">
+        {streamType && (
+          <span className="capitalize mr-2">{streamType}</span>
+        )}
         {stream.getVideoTracks().length} video, {stream.getAudioTracks().length} audio
+      </div>
+
+      {/* Stream type indicator */}
+      <div className="absolute bottom-4 right-4 bg-black bg-opacity-70 text-white px-3 py-1 rounded-full text-xs">
+        {streamType === 'both' && '📹+🖥️'}
+        {streamType === 'webcam' && '📹'}
+        {streamType === 'screen' && '🖥️'}
       </div>
     </div>
   )
