@@ -3,24 +3,32 @@ import { getMuxStreamingService } from '@/lib/mux-streaming'
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.text()
-    const signature = request.headers.get('mux-signature') || ''
-    
-    const payload = JSON.parse(body)
-    const muxStreaming = getMuxStreamingService()
-    
-    const isValid = muxStreaming.handleWebhook(payload, signature)
-    
-    if (!isValid) {
+    const signature = request.headers.get('mux-signature')
+    if (!signature) {
       return NextResponse.json(
-        { error: 'Invalid webhook signature' },
+        { error: 'Missing signature' },
         { status: 401 }
       )
     }
-    
+
+    const body = await request.text()
+    const payload = JSON.parse(body)
+
+    console.log('🪝 Received Mux webhook:', payload.type)
+
+    const muxStreaming = getMuxStreamingService()
+    const isValid = muxStreaming.handleWebhook(payload, signature)
+
+    if (!isValid) {
+      return NextResponse.json(
+        { error: 'Invalid signature' },
+        { status: 401 }
+      )
+    }
+
     return NextResponse.json({ received: true })
   } catch (error) {
-    console.error('Webhook error:', error)
+    console.error('Webhook processing error:', error)
     return NextResponse.json(
       { error: 'Webhook processing failed' },
       { status: 500 }

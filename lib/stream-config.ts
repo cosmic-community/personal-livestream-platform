@@ -18,25 +18,33 @@ export interface StreamConfig {
   }
   FALLBACK: {
     enableFallbackMode: boolean
-    enableBroadcastChannel?: boolean
+    enableBroadcastChannel: boolean
     maxFallbackDuration: number
     fallbackRetryInterval: number
   }
   MEDIA: {
-    video: {
-      width: { min: number; ideal: number; max: number }
-      height: { min: number; ideal: number; max: number }
-      frameRate: { ideal: number; max: number }
-    }
-    audio: {
-      echoCancellation: boolean
-      noiseSuppression: boolean
-      autoGainControl: boolean
-    }
+    video: MediaTrackConstraints
+    audio: MediaTrackConstraints
   }
 }
 
-export const STREAM_CONFIG: StreamConfig = {
+export function log(level: 'info' | 'warn' | 'error', message: string, data?: any): void {
+  const timestamp = new Date().toISOString()
+  const prefix = `[${timestamp}] [${level.toUpperCase()}]`
+  
+  switch (level) {
+    case 'error':
+      console.error(prefix, message, data || '')
+      break
+    case 'warn':
+      console.warn(prefix, message, data || '')
+      break
+    default:
+      console.log(prefix, message, data || '')
+  }
+}
+
+export default {
   SERVER_URLS: [
     'ws://localhost:3001',
     'wss://streaming-server.example.com'
@@ -57,13 +65,13 @@ export const STREAM_CONFIG: StreamConfig = {
       { urls: 'stun:stun1.l.google.com:19302' }
     ],
     iceCandidatePoolSize: 10,
-    bundlePolicy: 'balanced',
-    rtcpMuxPolicy: 'require'
+    bundlePolicy: 'balanced' as RTCBundlePolicy,
+    rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy
   },
   FALLBACK: {
     enableFallbackMode: true,
     enableBroadcastChannel: true,
-    maxFallbackDuration: 300000, // 5 minutes
+    maxFallbackDuration: 300000,
     fallbackRetryInterval: 5000
   },
   MEDIA: {
@@ -77,114 +85,5 @@ export const STREAM_CONFIG: StreamConfig = {
       noiseSuppression: true,
       autoGainControl: true
     }
-  }
-}
-
-export const StreamConfig = STREAM_CONFIG
-
-export function getStreamConfig(): StreamConfig {
-  return { ...STREAM_CONFIG }
-}
-
-export function getWebRTCConfig(): RTCConfiguration {
-  return {
-    iceServers: STREAM_CONFIG.WEBRTC.iceServers,
-    iceCandidatePoolSize: STREAM_CONFIG.WEBRTC.iceCandidatePoolSize,
-    bundlePolicy: STREAM_CONFIG.WEBRTC.bundlePolicy,
-    rtcpMuxPolicy: STREAM_CONFIG.WEBRTC.rtcpMuxPolicy
-  }
-}
-
-export interface StreamError {
-  code: string
-  message: string
-  timestamp: string
-  details?: any
-}
-
-export function createStreamError(
-  code: string, 
-  message: string, 
-  details?: any
-): StreamError {
-  return {
-    code,
-    message,
-    timestamp: new Date().toISOString(),
-    details
-  }
-}
-
-export function log(level: 'info' | 'warn' | 'error', message: string, data?: any): void {
-  const timestamp = new Date().toISOString()
-  const prefix = `[StreamConfig ${timestamp}]`
-  
-  switch (level) {
-    case 'info':
-      console.log(`${prefix} ${message}`, data || '')
-      break
-    case 'warn':
-      console.warn(`${prefix} ${message}`, data || '')
-      break
-    case 'error':
-      console.error(`${prefix} ${message}`, data || '')
-      break
-  }
-}
-
-export async function testAllConnectionMethods(): Promise<{
-  websocket: boolean
-  webrtc: boolean
-  mediaDevices: boolean
-}> {
-  const results = {
-    websocket: false,
-    webrtc: false,
-    mediaDevices: false
-  }
-
-  // Test WebSocket
-  try {
-    const ws = new WebSocket('ws://localhost:3001')
-    ws.close()
-    results.websocket = true
-  } catch (error) {
-    console.warn('WebSocket not available:', error)
-  }
-
-  // Test WebRTC
-  try {
-    const pc = new RTCPeerConnection()
-    pc.close()
-    results.webrtc = true
-  } catch (error) {
-    console.warn('WebRTC not available:', error)
-  }
-
-  // Test Media Devices
-  try {
-    if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
-      results.mediaDevices = true
-    }
-  } catch (error) {
-    console.warn('Media devices not available:', error)
-  }
-
-  return results
-}
-
-export function validateStreamConfig(config: Partial<StreamConfig>): boolean {
-  try {
-    if (!config.SERVER_URLS || !Array.isArray(config.SERVER_URLS)) {
-      return false
-    }
-
-    if (!config.CONNECTION || typeof config.CONNECTION.timeout !== 'number') {
-      return false
-    }
-
-    return true
-  } catch (error) {
-    return false
   }
 }

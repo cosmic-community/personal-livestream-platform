@@ -2,21 +2,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMuxClient } from '@/lib/mux-client'
 
-interface Params {
-  id: string
-}
-
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<Params> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await context.params
+    const { id } = await params
     const muxClient = getMuxClient()
     
-    const stream = await muxClient.getLiveStream(id)
-    return NextResponse.json(stream)
+    const liveStream = await muxClient.getLiveStream(id)
     
+    return NextResponse.json(liveStream)
   } catch (error) {
     console.error('Failed to get stream:', error)
     return NextResponse.json(
@@ -26,18 +19,14 @@ export async function GET(
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  context: { params: Promise<Params> }
-) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await context.params
+    const { id } = await params
     const muxClient = getMuxClient()
     
     await muxClient.deleteLiveStream(id)
     
     return NextResponse.json({ success: true })
-    
   } catch (error) {
     console.error('Failed to delete stream:', error)
     return NextResponse.json(
