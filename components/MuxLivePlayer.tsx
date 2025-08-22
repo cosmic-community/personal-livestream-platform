@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import MuxPlayer from '@mux/mux-player-react'
 
 interface MuxLivePlayerProps {
@@ -8,12 +8,13 @@ interface MuxLivePlayerProps {
   streamTitle?: string
   autoPlay?: boolean
   muted?: boolean
-  className?: string
+  controls?: boolean
   accentColor?: string
   showViewerCount?: boolean
-  onViewerCountUpdate?: (count: number) => void
   onStreamStart?: () => void
   onStreamEnd?: () => void
+  onError?: (error: string) => void
+  className?: string
 }
 
 export default function MuxLivePlayer({
@@ -21,202 +22,155 @@ export default function MuxLivePlayer({
   streamTitle = 'Live Stream',
   autoPlay = true,
   muted = false,
-  className = '',
-  accentColor = '#fa50b5',
+  controls = true,
+  accentColor = '#ff6b35',
   showViewerCount = true,
-  onViewerCountUpdate,
   onStreamStart,
-  onStreamEnd
+  onStreamEnd,
+  onError,
+  className = ''
 }: MuxLivePlayerProps) {
+  const playerRef = useRef<HTMLVideoElement>(null)
   const [isLive, setIsLive] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [hasError, setHasError] = useState(false)
   const [viewerCount, setViewerCount] = useState(0)
-  const [errorMessage, setErrorMessage] = useState('')
-  const retryCount = useRef(0)
-  const maxRetries = 5
+  const [error, setError] = useState<string>('')
+  const [playerReady, setPlayerReady] = useState(false)
 
   useEffect(() => {
-    if (!playbackId) return
-
-    console.log('📺 Initializing Mux live player for:', playbackId)
-    setIsLoading(true)
-    setHasError(false)
-    retryCount.current = 0
-
-    // Simulate viewer count updates (in real app, this would come from your backend)
-    const viewerInterval = setInterval(() => {
-      if (isLive) {
-        const newCount = Math.floor(Math.random() * 50) + 10 // Mock viewer count
-        setViewerCount(newCount)
-        onViewerCountUpdate?.(newCount)
+    // Monitor live stream status
+    const checkStreamStatus = async () => {
+      try {
+        const response = await fetch(`https://stream.mux.com/${playbackId}.m3u8`)
+        const isStreamActive = response.ok
+        
+        if (isStreamActive !== isLive) {
+          setIsLive(isStreamActive)
+          
+          if (isStreamActive) {
+            onStreamStart?.()
+          } else {
+            onStreamEnd?.()
+          }
+        }
+      } catch (err) {
+        console.error('Error checking stream status:', err)
       }
-    }, 10000)
-
-    return () => {
-      console.log('🧹 Cleaning up live player')
-      clearInterval(viewerInterval)
     }
-  }, [playbackId, isLive, onViewerCountUpdate])
 
-  const handleLoadStart = () => {
-    console.log('📡 Live stream load started')
-    setIsLoading(true)
-    setHasError(false)
+    const interval = setInterval(checkStreamStatus, 5000)
+    checkStreamStatus() // Initial check
+
+    return () => clearInterval(interval)
+  }, [playbackId, isLive, onStreamStart, onStreamEnd])
+
+  const handlePlayerReady = () => {
+    console.log('🎥 Mux player ready for playback ID:', playbackId)
+    setPlayerReady(true)
+    setError('')
   }
 
-  const handleLoadedData = () => {
-    console.log('✅ Live stream data loaded')
-    setIsLoading(false)
+  const handlePlayerError = (event: any) => {
+    const errorMessage = event.detail?.message || 'Video playback error'
+    console.error('❌ Mux player error:', errorMessage)
+    setError(errorMessage)
+    onError?.(errorMessage)
+  }
+
+  const handleLoadStart = () => {
+    console.log('📡 Loading stream:', playbackId)
+    setError('')
+  }
+
+  const handleCanPlay = () => {
+    console.log('✅ Stream ready to play')
     setIsLive(true)
     onStreamStart?.()
   }
 
-  const handlePlay = () => {
-    console.log('▶️ Live stream play started')
-    setIsLoading(false)
-    setIsLive(true)
-  }
-
-  const handlePause = () => {
-    console.log('⏸️ Live stream paused')
-  }
-
   const handleEnded = () => {
-    console.log('🏁 Live stream ended')
+    console.log('🔴 Stream ended')
     setIsLive(false)
     onStreamEnd?.()
   }
 
-  const handleError = (error: any) => {
-    console.error('❌ Live stream error:', error)
-    
-    if (retryCount.current < maxRetries) {
-      retryCount.current++
-      console.warn(`🔄 Retrying live stream connection (${retryCount.current}/${maxRetries})...`)
-      setTimeout(() => {
-        setHasError(false)
-        setIsLoading(true)
-      }, 1000 * retryCount.current) // Exponential backoff
-    } else {
-      setHasError(true)
-      setErrorMessage('Live stream is currently unavailable. Please try again later.')
-      setIsLoading(false)
-      setIsLive(false)
-      onStreamEnd?.()
+  const copyPlaybackId = async () => {
+    try {
+      await navigator.clipboard.writeText(playbackId)
+      console.log('✅ Playback ID copied to clipboard')
+    } catch (err) {
+      console.error('❌ Failed to copy playback ID')
     }
   }
 
-  const handleCanPlay = () => {
-    console.log('✅ Live stream can play')
-    setIsLoading(false)
-    setHasError(false)
-    setIsLive(true)
-  }
-
-  const handleWaiting = () => {
-    console.log('⏳ Live stream buffering...')
-    // Don't set loading to true for live streams as it might be temporary buffering
-  }
-
-  if (!playbackId) {
-    return (
-      <div className={`relative bg-black rounded-lg overflow-hidden aspect-video ${className}`}>
-        <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center">
-          <div className="text-center text-white">
-            <div className="mb-4">
-              <svg className="w-16 h-16 mx-auto text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                <path d="M14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
-              </svg>
-            </div>
-            <p className="text-lg font-semibold">No Stream ID</p>
-            <p className="text-sm text-gray-300">Please provide a valid Mux playback ID</p>
-          </div>
-        </div>
-      </div>
-    )
+  const copyStreamUrl = async () => {
+    const streamUrl = `https://stream.mux.com/${playbackId}.m3u8`
+    try {
+      await navigator.clipboard.writeText(streamUrl)
+      console.log('✅ Stream URL copied to clipboard')
+    } catch (err) {
+      console.error('❌ Failed to copy stream URL')
+    }
   }
 
   return (
-    <div className={`relative bg-black rounded-lg overflow-hidden ${className}`}>
-      <MuxPlayer
-        playbackId={playbackId}
-        streamType="live"
-        metadata={{
-          video_id: playbackId,
-          video_title: streamTitle,
-          viewer_user_id: 'live-viewer'
-        }}
-        accentColor={accentColor}
-        autoPlay={autoPlay}
-        muted={muted}
-        onLoadStart={handleLoadStart}
-        onLoadedData={handleLoadedData}
-        onPlay={handlePlay}
-        onPause={handlePause}
-        onEnded={handleEnded}
-        onError={handleError}
-        onCanPlay={handleCanPlay}
-        onWaiting={handleWaiting}
-        style={{
-          width: '100%',
-          height: '100%'
-        }}
-      />
-
-      {/* Live indicator */}
-      {isLive && !isLoading && !hasError && (
-        <div className="absolute top-4 left-4">
-          <div className="flex items-center gap-2 bg-red-600 text-white px-3 py-1 rounded-full text-sm font-medium">
+    <div className={`relative ${className}`}>
+      {/* Stream Status Overlay */}
+      {isLive && (
+        <div className="absolute top-4 left-4 z-10">
+          <div className="flex items-center space-x-2 bg-red-600 text-white px-3 py-1 rounded-full text-sm font-medium shadow-lg">
             <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-            LIVE
+            <span>LIVE</span>
           </div>
         </div>
       )}
 
-      {/* Viewer count */}
-      {showViewerCount && isLive && viewerCount > 0 && !isLoading && !hasError && (
-        <div className="absolute top-4 right-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded">
-          <div className="flex items-center gap-1 text-sm">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-              <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-            </svg>
+      {/* Viewer Count */}
+      {showViewerCount && viewerCount > 0 && (
+        <div className="absolute top-4 right-4 z-10">
+          <div className="bg-black bg-opacity-75 text-white px-3 py-1 rounded-full text-sm">
             {viewerCount} watching
           </div>
         </div>
       )}
 
-      {/* Loading overlay */}
-      {isLoading && (
-        <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center">
-          <div className="text-center text-white">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto mb-4"></div>
-            <p className="text-lg font-semibold">Connecting to live stream...</p>
-          </div>
-        </div>
-      )}
+      {/* Stream Controls */}
+      <div className="absolute bottom-4 right-4 z-10 flex space-x-2">
+        <button
+          onClick={copyPlaybackId}
+          className="bg-black bg-opacity-75 text-white p-2 rounded-lg hover:bg-opacity-90 transition-colors"
+          title="Copy Playback ID"
+        >
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z" />
+            <path d="M3 5a2 2 0 012-2 3 3 0 003 3h6a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L14.586 13H19v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5z" />
+          </svg>
+        </button>
+        
+        <button
+          onClick={copyStreamUrl}
+          className="bg-black bg-opacity-75 text-white p-2 rounded-lg hover:bg-opacity-90 transition-colors"
+          title="Copy Stream URL"
+        >
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clipRule="evenodd" />
+          </svg>
+        </button>
+      </div>
 
-      {/* Error overlay */}
-      {hasError && (
-        <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center">
-          <div className="text-center text-white">
-            <div className="mb-4">
-              <svg className="w-16 h-16 mx-auto text-red-500" fill="currentColor" viewBox="0 0 20 20">
+      {/* Error Display */}
+      {error && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black bg-opacity-75">
+          <div className="bg-red-600 text-white p-4 rounded-lg max-w-md text-center">
+            <div className="flex items-center justify-center mb-2">
+              <svg className="w-6 h-6 mr-2" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
+              <span className="font-semibold">Playback Error</span>
             </div>
-            <p className="text-lg font-semibold mb-2">Stream Unavailable</p>
-            <p className="text-sm text-gray-300 mb-4">{errorMessage}</p>
+            <p className="text-sm">{error}</p>
             <button
-              onClick={() => {
-                setHasError(false)
-                setErrorMessage('')
-                retryCount.current = 0
-                setIsLoading(true)
-              }}
-              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
+              onClick={() => setError('')}
+              className="mt-3 px-4 py-2 bg-white text-red-600 rounded hover:bg-gray-100 text-sm font-medium"
             >
               Retry
             </button>
@@ -224,21 +178,57 @@ export default function MuxLivePlayer({
         </div>
       )}
 
-      {/* Stream ended overlay */}
-      {!isLoading && !isLive && !hasError && (
-        <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center">
-          <div className="text-center text-white">
-            <div className="mb-4">
-              <svg className="w-16 h-16 mx-auto text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                <path d="M14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
-              </svg>
+      {/* Mux Player */}
+      <MuxPlayer
+        ref={playerRef}
+        playbackId={playbackId}
+        streamType="live"
+        autoPlay={autoPlay}
+        muted={muted}
+        controls={controls}
+        style={{
+          height: '100%',
+          width: '100%',
+          aspectRatio: '16/9',
+          '--controls-accent-color': accentColor
+        } as any}
+        title={streamTitle}
+        onCanPlay={handleCanPlay}
+        onLoadStart={handleLoadStart}
+        onEnded={handleEnded}
+        onError={handlePlayerError}
+        onLoadedData={handlePlayerReady}
+        metadata={{
+          video_id: playbackId,
+          video_title: streamTitle,
+          video_stream_type: 'live',
+          page_type: 'live_stream_viewer'
+        }}
+      />
+
+      {/* Stream Info Overlay */}
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold">{streamTitle}</h3>
+            <div className="flex items-center space-x-4 text-sm opacity-75">
+              <span>Playback ID: {playbackId.substring(0, 8)}...</span>
+              {isLive ? (
+                <span className="text-green-400">● Live</span>
+              ) : (
+                <span className="text-gray-400">● Offline</span>
+              )}
             </div>
-            <p className="text-lg font-semibold mb-2">Stream Offline</p>
-            <p className="text-sm text-gray-300">This live stream is currently offline.</p>
           </div>
+          
+          {playerReady && (
+            <div className="text-right text-sm opacity-75">
+              <div>Powered by Mux</div>
+              {isLive && <div>Low-latency streaming</div>}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

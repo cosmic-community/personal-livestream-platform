@@ -2,21 +2,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMuxClient } from '@/lib/mux-client'
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+interface RouteParams {
+  params: Promise<{ id: string }>
+}
+
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
     const muxClient = getMuxClient()
     
-    const liveStream = await muxClient.getLiveStream(id)
+    console.log('📊 Checking stream status:', id)
+    
+    const stream = await muxClient.getLiveStream(id)
     
     return NextResponse.json({
-      status: liveStream.status,
-      isLive: liveStream.status === 'active'
+      id: stream.id,
+      status: stream.status,
+      isLive: stream.status === 'active',
+      streamKey: stream.streamKey ? 'configured' : 'missing',
+      playbackIds: stream.playbackIds.length,
+      lastChecked: new Date().toISOString()
     })
   } catch (error) {
-    console.error('Failed to get stream status:', error)
+    console.error('❌ Failed to get stream status:', error)
     return NextResponse.json(
-      { error: 'Failed to get stream status' },
+      { 
+        error: 'Failed to get stream status',
+        status: 'unknown',
+        isLive: false
+      },
       { status: 500 }
     )
   }
