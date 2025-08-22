@@ -9,7 +9,7 @@ interface StreamConfig {
   reconnectWindow: number
   newAssetSettings: {
     playbackPolicy: 'public' | 'signed'
-    mp4Support: 'none' | 'standard' // Fixed: Remove 'capped-1080p' option
+    mp4Support: 'none' | 'standard'
     normalizeAudio: boolean
   }
   subtitleSettings?: {
@@ -27,7 +27,7 @@ export default function UniqueStreamCreator() {
     reconnectWindow: 60,
     newAssetSettings: {
       playbackPolicy: 'public',
-      mp4Support: 'standard', // Fixed: Use valid option
+      mp4Support: 'standard',
       normalizeAudio: true
     },
     subtitleSettings: {
@@ -61,7 +61,7 @@ export default function UniqueStreamCreator() {
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-lg">
         <h2 className="text-2xl font-bold mb-2">🎯 Unique Live Stream Creator</h2>
         <p className="opacity-90">
-          Create a custom live stream with your unique Mux credentials and advanced configuration
+          Create a custom live stream with your unique Mux configuration
         </p>
       </div>
 
@@ -139,7 +139,7 @@ export default function UniqueStreamCreator() {
                   ...prev, 
                   newAssetSettings: {
                     ...prev.newAssetSettings,
-                    mp4Support: e.target.value as 'none' | 'standard' // Fixed: Remove invalid option
+                    mp4Support: e.target.value as 'none' | 'standard'
                   }
                 }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"

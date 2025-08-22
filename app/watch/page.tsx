@@ -3,7 +3,20 @@
 import { Suspense } from 'react'
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
-import MuxLivePlayer from '@/components/MuxLivePlayer'
+import dynamic from 'next/dynamic'
+
+// Dynamically import MuxLivePlayer to avoid SSR issues
+const MuxLivePlayer = dynamic(() => import('@/components/MuxLivePlayer'), {
+  ssr: false,
+  loading: () => (
+    <div className="aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center">
+      <div className="text-center text-white">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+        <p className="text-lg font-semibold">Loading player...</p>
+      </div>
+    </div>
+  )
+})
 
 // Create a separate component for the search params logic
 function WatchContent() {
