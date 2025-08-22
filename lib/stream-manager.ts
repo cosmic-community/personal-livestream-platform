@@ -90,6 +90,7 @@ export class StreamManager {
   }
 
   private emitError(error: StreamError): void {
+    this.state.errors.push(error)
     this.onErrorCb?.(error)
     this.config.onError?.(error)
   }
@@ -283,10 +284,14 @@ export class StreamManager {
 
   private async getScreenStream(): Promise<MediaStream | undefined> {
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+      // Fixed: Proper typing for getDisplayMedia
+      const constraints: DisplayMediaStreamConstraints = {
+        video: {
+          mediaSource: 'screen'
+        } as MediaTrackConstraints & { mediaSource?: string },
         audio: true
-      })
+      }
+      const stream = await navigator.mediaDevices.getDisplayMedia(constraints)
       this.log('Screen stream acquired')
       return stream
     } catch (error) {
@@ -470,7 +475,7 @@ export class StreamManager {
     return this.combinedStream
   }
 
-  get statistics(): any {
+  get statistics(): StreamStats {
     return this.state.stats
   }
 

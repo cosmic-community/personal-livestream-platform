@@ -69,18 +69,8 @@ export interface MediaConstraints {
   audio?: MediaTrackConstraints | boolean
 }
 
+// Fixed: Unified StreamState interface that matches BroadcasterState
 export interface StreamState {
-  isLive: boolean
-  isConnecting: boolean
-  streamType: StreamType
-  webcamEnabled: boolean
-  screenEnabled: boolean
-  viewerCount: number
-  sessionId?: string
-  error?: string
-}
-
-export interface BroadcasterState {
   isStreaming: boolean
   isLive: boolean
   isConnecting: boolean
@@ -94,7 +84,12 @@ export interface BroadcasterState {
   peerConnections: Map<string, RTCPeerConnection>
   stats: StreamStats
   errors: StreamError[]
+  sessionId?: string
+  error?: string
 }
+
+// BroadcasterState now extends StreamState for consistency
+export interface BroadcasterState extends StreamState {}
 
 export interface ViewerState {
   isWatching?: boolean
@@ -113,10 +108,10 @@ export interface ViewerState {
 
 export interface StreamControlsProps {
   streamState: StreamState
-  onStartStream: (type: StreamType) => void
+  onStartStream: (type: StreamType) => Promise<void>
   onStopStream: () => void
-  onToggleWebcam: () => void
-  onToggleScreen: () => void
+  onToggleWebcam: () => Promise<void>
+  onToggleScreen: () => Promise<void>
 }
 
 export interface StreamStatsProps {

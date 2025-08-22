@@ -165,19 +165,29 @@ export default function LiveStreamComponent({
       
       let stream: MediaStream
       if (streamType === 'screen') {
-        // FIXED: Correct DisplayMediaStreamOptions type for getDisplayMedia
-        const displayConstraints: DisplayMediaStreamOptions = {
-          video: true,
+        // Fixed: Proper typing for screen capture
+        const constraints: DisplayMediaStreamConstraints = {
+          video: {
+            mediaSource: 'screen'
+          } as MediaTrackConstraints & { mediaSource?: string },
           audio: true
         }
-        stream = await navigator.mediaDevices.getDisplayMedia(displayConstraints)
+        stream = await navigator.mediaDevices.getDisplayMedia(constraints)
       } else {
-        // FIXED: Correct MediaStreamConstraints type for getUserMedia
-        const userConstraints: MediaStreamConstraints = {
-          video: true,
-          audio: true
+        // Fixed: Proper typing for user media
+        const constraints: MediaStreamConstraints = {
+          video: {
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            frameRate: { ideal: 30 }
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
         }
-        stream = await navigator.mediaDevices.getUserMedia(userConstraints)
+        stream = await navigator.mediaDevices.getUserMedia(constraints)
       }
 
       localStreamRef.current = stream
@@ -185,7 +195,7 @@ export default function LiveStreamComponent({
       // Display local video
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
-        localVideoRef.current.play().catch(console.error)
+        await localVideoRef.current.play().catch(console.error)
       }
 
       // Start broadcast via WebSocket
@@ -201,6 +211,7 @@ export default function LiveStreamComponent({
 
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to start stream'
+      console.error('❌ Stream error:', err)
       setError(errorMsg)
       onError?.(errorMsg)
       throw err
