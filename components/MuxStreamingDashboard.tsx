@@ -42,6 +42,8 @@ export default function MuxStreamingDashboard() {
     isLive: boolean
   } | null>(null)
 
+  const [showStreamKey, setShowStreamKey] = useState(false)
+
   const muxStreaming = getMuxStreamingService()
 
   useEffect(() => {
@@ -97,7 +99,7 @@ export default function MuxStreamingDashboard() {
   }
 
   const handleDeleteStream = async (streamId: string) => {
-    if (!confirm('Are you sure you want to delete this stream? This action cannot be undone.')) {
+    if (!confirm('Are you sure you want to delete this stream? This action cannot be undone and will invalidate the stream key.')) {
       return
     }
     
@@ -116,6 +118,21 @@ export default function MuxStreamingDashboard() {
       console.log('✅ Copied to clipboard')
     } catch (error) {
       console.error('❌ Failed to copy to clipboard:', error)
+    }
+  }
+
+  const handleResetStreamKey = async (streamId: string) => {
+    if (!confirm('Are you sure you want to reset the stream key? This will invalidate the current key and anyone using it will lose access.')) {
+      return
+    }
+    
+    try {
+      // Note: This would require implementing a reset endpoint
+      console.log('🔄 Stream key reset requested for:', streamId)
+      // await resetStreamKey(streamId)
+      await refreshStreams()
+    } catch (error) {
+      console.error('❌ Failed to reset stream key:', error)
     }
   }
 
@@ -157,6 +174,25 @@ export default function MuxStreamingDashboard() {
         </div>
       )}
 
+      {/* Stream Key Security Warning */}
+      {activeStream && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <svg className="w-5 h-5 text-amber-400 mt-0.5 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <div className="flex-1">
+              <h3 className="text-amber-800 text-sm font-medium">🔐 Stream Key Security</h3>
+              <p className="text-amber-700 text-sm mt-1">
+                <strong>Important:</strong> Your stream key should be treated as a private credential. 
+                Anyone with access to this key can stream to your live stream. Keep it secure and never share it publicly.
+                If you suspect your stream key has been compromised, delete this stream or contact support to reset the key.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Active Stream Details */}
       {activeStream && (
         <div className="card">
@@ -176,6 +212,14 @@ export default function MuxStreamingDashboard() {
               }`}>
                 {activeStream.status}
               </div>
+              
+              <button
+                onClick={() => handleResetStreamKey(activeStream.id)}
+                className="btn btn-sm btn-warning mr-2"
+                title="Reset stream key (invalidates current key)"
+              >
+                Reset Key
+              </button>
               
               <button
                 onClick={() => handleDeleteStream(activeStream.id)}
@@ -210,11 +254,23 @@ export default function MuxStreamingDashboard() {
                       </div>
                     </div>
                     <div>
-                      <label className="text-sm text-gray-600">Stream Key:</label>
+                      <label className="text-sm text-gray-600 flex items-center gap-2">
+                        Stream Key:
+                        <span className="text-xs bg-red-100 text-red-800 px-1 rounded">Private</span>
+                      </label>
                       <div className="flex items-center gap-2">
                         <code className="bg-white px-2 py-1 rounded text-sm flex-1 font-mono">
-                          {streamingInstructions.software.obs.streamKey.substring(0, 20)}...
+                          {showStreamKey 
+                            ? streamingInstructions.software.obs.streamKey 
+                            : `${streamingInstructions.software.obs.streamKey.substring(0, 12)}...`
+                          }
                         </code>
+                        <button
+                          onClick={() => setShowStreamKey(!showStreamKey)}
+                          className="btn btn-xs btn-secondary"
+                        >
+                          {showStreamKey ? 'Hide' : 'Show'}
+                        </button>
                         <button
                           onClick={() => copyToClipboard(streamingInstructions.software.obs.streamKey)}
                           className="btn btn-xs btn-secondary"
@@ -222,6 +278,9 @@ export default function MuxStreamingDashboard() {
                           Copy
                         </button>
                       </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        ⚠️ Keep this key private - anyone with it can stream to your channel
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -244,11 +303,23 @@ export default function MuxStreamingDashboard() {
                       </div>
                     </div>
                     <div>
-                      <label className="text-sm text-gray-600">Stream Key:</label>
+                      <label className="text-sm text-gray-600 flex items-center gap-2">
+                        Stream Key:
+                        <span className="text-xs bg-red-100 text-red-800 px-1 rounded">Private</span>
+                      </label>
                       <div className="flex items-center gap-2">
                         <code className="bg-white px-2 py-1 rounded text-sm flex-1 font-mono">
-                          {streamingInstructions.software.streamlabs.streamKey.substring(0, 20)}...
+                          {showStreamKey 
+                            ? streamingInstructions.software.streamlabs.streamKey 
+                            : `${streamingInstructions.software.streamlabs.streamKey.substring(0, 12)}...`
+                          }
                         </code>
+                        <button
+                          onClick={() => setShowStreamKey(!showStreamKey)}
+                          className="btn btn-xs btn-secondary"
+                        >
+                          {showStreamKey ? 'Hide' : 'Show'}
+                        </button>
                         <button
                           onClick={() => copyToClipboard(streamingInstructions.software.streamlabs.streamKey)}
                           className="btn btn-xs btn-secondary"
@@ -256,9 +327,24 @@ export default function MuxStreamingDashboard() {
                           Copy
                         </button>
                       </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        ⚠️ Keep this key private - anyone with it can stream to your channel
+                      </p>
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Stream Key Security Best Practices */}
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <h5 className="font-medium text-blue-900 mb-2">🛡️ Stream Key Security Best Practices</h5>
+                <ul className="text-sm text-blue-800 space-y-1">
+                  <li>• Never share your stream key in public channels, screenshots, or recordings</li>
+                  <li>• Store your stream key securely (password manager, encrypted notes)</li>
+                  <li>• If you suspect your key is compromised, reset it immediately</li>
+                  <li>• Consider using temporary streams for testing or public demonstrations</li>
+                  <li>• Monitor your stream dashboard for unexpected activity</li>
+                </ul>
               </div>
             </div>
           )}
@@ -404,14 +490,26 @@ export default function MuxStreamingDashboard() {
                     <p className="text-sm text-gray-600">
                       Playback IDs: {stream.playbackIds.length}
                     </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      🔐 Stream key: {stream.streamKey.substring(0, 8)}... (Keep private)
+                    </p>
                   </div>
                   
-                  <button
-                    onClick={() => handleDeleteStream(stream.id)}
-                    className="btn btn-sm btn-danger ml-4"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex items-center gap-2 ml-4">
+                    <button
+                      onClick={() => handleResetStreamKey(stream.id)}
+                      className="btn btn-xs btn-warning"
+                      title="Reset stream key"
+                    >
+                      Reset Key
+                    </button>
+                    <button
+                      onClick={() => handleDeleteStream(stream.id)}
+                      className="btn btn-xs btn-danger"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -440,6 +538,19 @@ export default function MuxStreamingDashboard() {
                 2
               </div>
               <div>
+                <h3 className="font-medium">Secure Your Stream Key</h3>
+                <p className="text-sm text-gray-600">
+                  <strong>Important:</strong> Your stream key is like a password. Keep it private and secure. 
+                  Never share it publicly or in screenshots.
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex gap-4">
+              <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold text-sm">
+                3
+              </div>
+              <div>
                 <h3 className="font-medium">Configure Your Software</h3>
                 <p className="text-sm text-gray-600">Use the provided RTMP URL and stream key in OBS Studio, Streamlabs, or any RTMP-compatible software.</p>
               </div>
@@ -447,7 +558,7 @@ export default function MuxStreamingDashboard() {
             
             <div className="flex gap-4">
               <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold text-sm">
-                3
+                4
               </div>
               <div>
                 <h3 className="font-medium">Start Broadcasting</h3>

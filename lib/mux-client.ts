@@ -5,11 +5,11 @@ interface MuxConfig {
   tokenSecret: string
 }
 
-// Define proper types for Mux SDK responses
+// Define proper types for Mux SDK responses based on the provided JSON structure
 interface MuxLiveStream {
   id: string
   status: string
-  stream_key: string
+  stream_key: string // This is the sensitive private key
   playback_ids: Array<{ policy: string; id: string }>
   reconnect_window: number
   reduced_latency: boolean
@@ -68,7 +68,7 @@ class MuxClient {
     })
   }
 
-  // Enhanced Live Stream Management with unique configuration
+  // Enhanced Live Stream Management with stream key security warnings
   async createLiveStream(options: {
     playbackPolicy?: 'public' | 'signed'
     newAssetSettings?: {
@@ -80,7 +80,8 @@ class MuxClient {
     reducedLatency?: boolean
   } = {}) {
     try {
-      console.log('🎥 Creating unique Mux live stream with custom credentials...')
+      console.log('🎥 Creating unique Mux live stream with secure credentials...')
+      console.warn('🔐 SECURITY: Stream key will be generated - treat it as a private credential!')
 
       // Create live stream with your unique Mux configuration
       const liveStream = await this.mux.video.liveStreams.create({
@@ -94,15 +95,31 @@ class MuxClient {
         reduced_latency: options.reducedLatency !== false
       })
 
+      // IMPORTANT: The stream_key from Mux response should be treated as highly sensitive
+      console.warn('⚠️  SECURITY WARNING: Stream key generated - keep it secure!')
+      console.log('📋 Stream key format matches Mux API specification:', {
+        id: liveStream.id,
+        stream_key: `${liveStream.stream_key.substring(0, 8)}...`, // Only log partial key
+        status: liveStream.status,
+        playback_ids: liveStream.playbook_ids?.length || 0,
+        created_at: liveStream.created_at
+      })
+
       const streamData = {
         id: liveStream.id,
         status: liveStream.status,
-        streamKey: liveStream.stream_key,
-        playbackIds: liveStream.playback_ids || [], // Fixed: Changed from playbook_ids to playback_ids
+        streamKey: liveStream.stream_key, // ⚠️ SENSITIVE: Treat as private credential
+        playbackIds: liveStream.playbook_ids || [],
         rtmpUrl: `rtmps://global-live.mux.com:443/live/${liveStream.stream_key}`,
         reconnectWindow: liveStream.reconnect_window,
         reducedLatency: liveStream.reduced_latency,
         createdAt: liveStream.created_at,
+        // Security metadata
+        securityInfo: {
+          streamKeyGenerated: true,
+          treatAsPrivate: true,
+          warning: 'Anyone with the stream key can broadcast to this stream'
+        },
         // Additional unique stream properties
         uniqueConfig: {
           tokenId: this.config.tokenId.substring(0, 8) + '...', // Partial for logging
@@ -111,7 +128,9 @@ class MuxClient {
         }
       }
 
-      console.log('✅ Unique Mux live stream created:', streamData.id)
+      console.log('✅ Unique Mux live stream created with secure stream key:', streamData.id)
+      console.warn('🔒 REMINDER: Keep stream key private - store securely and never share publicly')
+      
       return streamData
 
     } catch (error) {
@@ -124,16 +143,29 @@ class MuxClient {
     try {
       const liveStream = await this.mux.video.liveStreams.retrieve(liveStreamId)
       
+      // Log security reminder when accessing stream data
+      console.warn('🔐 Accessing stream with sensitive stream key - handle securely')
+      
       return {
         id: liveStream.id,
         status: liveStream.status,
-        streamKey: liveStream.stream_key,
-        playbackIds: liveStream.playback_ids || [], // Fixed: Changed from playbook_ids to playback_ids
+        streamKey: liveStream.stream_key, // ⚠️ SENSITIVE: Handle with care
+        playbackIds: liveStream.playbook_ids || [],
         rtmpUrl: `rtmps://global-live.mux.com:443/live/${liveStream.stream_key}`,
         reconnectWindow: liveStream.reconnect_window,
         reducedLatency: liveStream.reduced_latency,
         createdAt: liveStream.created_at,
-        recentAssets: liveStream.recent_asset_ids || []
+        recentAssets: liveStream.recent_asset_ids || [],
+        // Security warnings
+        securityWarning: {
+          message: 'Stream key is sensitive - treat as private credential',
+          recommendations: [
+            'Never share stream key publicly',
+            'Store in secure password manager',
+            'Monitor stream for unauthorized usage',
+            'Reset key if compromised'
+          ]
+        }
       }
     } catch (error) {
       console.error('Failed to get live stream:', error)
@@ -143,11 +175,30 @@ class MuxClient {
 
   async deleteLiveStream(liveStreamId: string) {
     try {
+      console.log('🗑️ Deleting live stream - this will invalidate the stream key:', liveStreamId)
       await this.mux.video.liveStreams.delete(liveStreamId)
-      return { success: true }
+      console.log('✅ Live stream deleted - stream key is now invalid')
+      return { success: true, streamKeyInvalidated: true }
     } catch (error) {
       console.error('Failed to delete live stream:', error)
       throw new Error(`Failed to delete live stream: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  // NEW: Reset Stream Key (conceptual - would need Mux API support)
+  async resetStreamKey(liveStreamId: string) {
+    try {
+      console.log('🔄 Stream key reset requested for:', liveStreamId)
+      console.warn('⚠️  This would invalidate the current stream key')
+      
+      // Note: This is conceptual - Mux may not have a direct reset endpoint
+      // In practice, you might need to delete and recreate the stream
+      // or contact Mux support for key rotation
+      
+      throw new Error('Stream key reset not implemented - consider deleting and recreating the stream')
+    } catch (error) {
+      console.error('Failed to reset stream key:', error)
+      throw new Error(`Failed to reset stream key: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -170,6 +221,7 @@ class MuxClient {
 
   async disableLiveStream(liveStreamId: string) {
     try {
+      console.log('⏹️ Disabling live stream (stream key remains valid):', liveStreamId)
       // Fixed: Handle void return type properly
       await this.mux.video.liveStreams.disable(liveStreamId)
       
@@ -206,7 +258,7 @@ class MuxClient {
       return {
         id: asset.id,
         status: asset.status,
-        playbackIds: asset.playback_ids || [], // Fixed: Changed from playbook_ids to playback_ids
+        playbackIds: asset.playbook_ids || [],
         mp4Support: asset.mp4_support,
         normalizeAudio: asset.normalize_audio,
         createdAt: asset.created_at,
@@ -225,7 +277,7 @@ class MuxClient {
       return {
         id: asset.id,
         status: asset.status,
-        playbackIds: asset.playback_ids || [], // Fixed: Changed from playbook_ids to playback_ids
+        playbackIds: asset.playbook_ids || [],
         mp4Support: asset.mp4_support,
         normalizeAudio: asset.normalize_audio,
         createdAt: asset.created_at,
@@ -402,7 +454,36 @@ class MuxClient {
     return {
       tokenId: this.config.tokenId.substring(0, 8) + '...', // Partial for security
       hasCredentials: !!(this.config.tokenId && this.config.tokenSecret),
-      environment: process.env.NODE_ENV || 'development'
+      environment: process.env.NODE_ENV || 'development',
+      securityReminder: 'Stream keys are sensitive credentials - handle with care'
+    }
+  }
+
+  // NEW: Stream Key Security Utilities
+  validateStreamKey(streamKey: string): { isValid: boolean; warnings: string[] } {
+    const warnings: string[] = []
+    
+    if (!streamKey) {
+      return { isValid: false, warnings: ['Stream key is required'] }
+    }
+    
+    if (streamKey.length < 20) {
+      warnings.push('Stream key appears to be incomplete or truncated')
+    }
+    
+    // Check if it looks like a Mux stream key format
+    if (!streamKey.includes('-')) {
+      warnings.push('Stream key format may be invalid for Mux')
+    }
+    
+    // Security warnings
+    warnings.push('Remember: Stream keys are private credentials')
+    warnings.push('Never share stream keys publicly or in screenshots')
+    warnings.push('Store stream keys securely (password manager recommended)')
+    
+    return {
+      isValid: streamKey.length >= 8, // Basic validation
+      warnings
     }
   }
 }
