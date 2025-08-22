@@ -46,7 +46,6 @@ export class StreamingCore {
       }
     }
 
-    // Fixed: Initialize with proper StreamState structure
     this.state = createStreamState({
       isLive: false,
       isConnecting: false,
@@ -64,16 +63,19 @@ export class StreamingCore {
   }
 
   private emitStateChange(): void {
-    this.onStateChangeCb?.(this.state)
+    if (this.onStateChangeCb) {
+      this.onStateChangeCb(this.state)
+    }
   }
 
   private emitError(error: StreamError): void {
-    this.onErrorCb?.(error)
+    if (this.onErrorCb) {
+      this.onErrorCb(error)
+    }
   }
 
   async initialize(): Promise<boolean> {
     try {
-      // Check WebRTC support
       if (!checkWebRTCSupport()) {
         throw new Error('WebRTC is not supported in this browser')
       }
@@ -99,7 +101,6 @@ export class StreamingCore {
         throw new Error('StreamingCore not initialized')
       }
 
-      // Connect to signaling server
       const socket = socketManager.connect()
       this.log('Connected to signaling server:', socket.id)
       return true
@@ -119,11 +120,9 @@ export class StreamingCore {
     try {
       this.log(`Starting ${type} stream...`)
       this.state.isConnecting = true
-      // Fixed: Ensure streamType matches interface expectations (no 'combined' type)
       this.state.streamType = type
       this.emitStateChange()
 
-      // Get media streams based on type
       let mediaStream: MediaStream | undefined
 
       switch (type) {
@@ -170,12 +169,13 @@ export class StreamingCore {
 
       this.mediaStreams.set('combined', mediaStream)
 
-      // Start broadcasting
       await socketManager.startBroadcast(type)
 
       this.state.isLive = true
       this.state.isConnecting = false
-      this.state.mediaStream = mediaStream
+      if ('mediaStream' in this.state) {
+        this.state.mediaStream = mediaStream
+      }
       this.emitStateChange()
 
       this.log('Stream started successfully')
@@ -199,31 +199,30 @@ export class StreamingCore {
     try {
       this.log('Stopping stream...')
 
-      // Stop broadcasting
       socketManager.stopBroadcast()
 
-      // Close all peer connections
       this.peerConnections.forEach((pc) => {
         pc.close()
       })
       this.peerConnections.clear()
 
-      // Stop all media streams
       this.mediaStreams.forEach((stream) => {
         stopMediaStream(stream)
       })
       this.mediaStreams.clear()
 
-      // Reset state
       this.state = createStreamState({
         isLive: false,
         isConnecting: false,
         streamType: 'webcam',
         webcamEnabled: false,
         screenEnabled: false,
-        viewerCount: 0,
-        mediaStream: null
+        viewerCount: 0
       })
+
+      if ('mediaStream' in this.state) {
+        this.state.mediaStream = null
+      }
 
       this.emitStateChange()
       this.log('Stream stopped successfully')
@@ -269,7 +268,6 @@ export class StreamingCore {
   async toggleWebcam(): Promise<void> {
     try {
       if (this.state.webcamEnabled) {
-        // Turn off webcam
         const webcamStream = this.mediaStreams.get('webcam')
         if (webcamStream) {
           stopMediaStream(webcamStream)
@@ -277,7 +275,6 @@ export class StreamingCore {
         }
         this.state.webcamEnabled = false
       } else {
-        // Turn on webcam
         const webcamStream = await this.getWebcamStream()
         if (webcamStream) {
           this.mediaStreams.set('webcam', webcamStream)
@@ -298,7 +295,6 @@ export class StreamingCore {
   async toggleScreen(): Promise<void> {
     try {
       if (this.state.screenEnabled) {
-        // Turn off screen share
         const screenStream = this.mediaStreams.get('screen')
         if (screenStream) {
           stopMediaStream(screenStream)
@@ -306,7 +302,6 @@ export class StreamingCore {
         }
         this.state.screenEnabled = false
       } else {
-        // Turn on screen share
         const screenStream = await this.getScreenStream()
         if (screenStream) {
           this.mediaStreams.set('screen', screenStream)
@@ -324,13 +319,11 @@ export class StreamingCore {
     }
   }
 
-  // Public getters
-  getCurrentStream(): MediaStream | undefined {
-    return this.mediaStreams.get('combined')
+  getCurrentStream(): MediaStream | null {
+    return this.mediaStreams.get('combined') || null
   }
 
   getStreamStats(): any {
-    // Return basic stats (could be enhanced)
     return {
       streamsCount: this.mediaStreams.size,
       connectionsCount: this.peerConnections.size,
@@ -342,7 +335,6 @@ export class StreamingCore {
     return socketManager.isConnected()
   }
 
-  // Event handlers
   onStateChange(callback: (state: StreamState) => void): void {
     this.onStateChangeCb = callback
   }

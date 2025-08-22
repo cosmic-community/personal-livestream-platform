@@ -25,7 +25,6 @@ export function useStream(config: UseStreamConfig = {}) {
   const [isSupported, setIsSupported] = useState(true)
   const streamManagerRef = useRef<StreamManager | null>(null)
 
-  // Initialize stream manager
   useEffect(() => {
     const supported = checkWebRTCSupport()
     setIsSupported(supported)
@@ -35,16 +34,14 @@ export function useStream(config: UseStreamConfig = {}) {
         code: 'WEBRTC_NOT_SUPPORTED',
         message: 'WebRTC is not supported in your browser',
         timestamp: new Date().toISOString(),
-        context: { userAgent: navigator.userAgent }
+        context: { userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown' }
       })
       return
     }
 
-    // Create stream manager - Fixed: Only create if it doesn't exist
     if (!streamManagerRef.current) {
       streamManagerRef.current = new StreamManager({
         onStateChange: (state: BroadcasterState) => {
-          // Convert BroadcasterState to StreamState - Fixed: Include all required properties
           const streamState: StreamState = {
             isLive: state.isLive,
             isConnecting: state.isConnecting,
@@ -55,7 +52,6 @@ export function useStream(config: UseStreamConfig = {}) {
             sessionId: state.currentSession?.id,
             error: state.errors.length > 0 ? state.errors[state.errors.length - 1]?.message : undefined,
             lastUpdated: state.lastUpdated,
-            // Additional properties for extended functionality
             isStreaming: state.isStreaming,
             streamQuality: state.streamQuality,
             currentSession: state.currentSession,
@@ -65,20 +61,25 @@ export function useStream(config: UseStreamConfig = {}) {
             errors: state.errors
           }
           setStreamState(streamState)
-          config.onStateChange?.(state)
+          if (config.onStateChange) {
+            config.onStateChange(state)
+          }
         },
         onError: (err: StreamError) => {
           setError(err)
-          config.onError?.(err)
+          if (config.onError) {
+            config.onError(err)
+          }
         },
         onViewerCountChange: (count: number) => {
           setStreamState(prev => ({ ...prev, viewerCount: count }))
-          config.onViewerCountChange?.(count)
+          if (config.onViewerCountChange) {
+            config.onViewerCountChange(count)
+          }
         }
       })
     }
 
-    // Auto-connect if enabled
     if (config.autoConnect) {
       socketManager.connect()
     }
@@ -90,7 +91,6 @@ export function useStream(config: UseStreamConfig = {}) {
     }
   }, [config.autoConnect])
 
-  // Start streaming
   const startStream = useCallback(async (streamType: StreamType) => {
     if (!streamManagerRef.current) {
       throw new Error('Stream manager not initialized')
@@ -111,7 +111,6 @@ export function useStream(config: UseStreamConfig = {}) {
     }
   }, [])
 
-  // Stop streaming  
   const stopStream = useCallback(async () => {
     if (!streamManagerRef.current) return
 
@@ -130,7 +129,6 @@ export function useStream(config: UseStreamConfig = {}) {
     }
   }, [])
 
-  // Toggle webcam
   const toggleWebcam = useCallback(async () => {
     if (!streamManagerRef.current) return
 
@@ -149,7 +147,6 @@ export function useStream(config: UseStreamConfig = {}) {
     }
   }, [])
 
-  // Toggle screen share
   const toggleScreen = useCallback(async () => {
     if (!streamManagerRef.current) return
 
@@ -168,45 +165,37 @@ export function useStream(config: UseStreamConfig = {}) {
     }
   }, [])
 
-  // Clear error
   const clearError = useCallback(() => {
     setError(null)
   }, [])
 
-  // Get current stream - FIXED: Add proper null check and optional chaining
-  const getCurrentStream = useCallback(() => {
+  const getCurrentStream = useCallback((): MediaStream | null => {
     return streamManagerRef.current?.stream ?? null
   }, [])
 
-  // Get stream statistics - FIXED: Add proper null check and optional chaining
   const getStatistics = useCallback(() => {
     return streamManagerRef.current?.statistics ?? null
   }, [])
 
-  // Check if streaming is available
   const isStreamingAvailable = useCallback(() => {
     return isSupported && socketManager.isConnected()
   }, [isSupported])
 
   return {
-    // State
     streamState,
     error,
     isSupported,
     
-    // Actions
     startStream,
     stopStream,
     toggleWebcam,
     toggleScreen,
     clearError,
     
-    // Getters
     getCurrentStream,
     getStatistics,
     isStreamingAvailable,
     
-    // Computed values
     isLive: streamState.isLive,
     isConnecting: streamState.isConnecting,
     viewerCount: streamState.viewerCount,

@@ -84,14 +84,12 @@ export class ConnectionManager {
     this.state.connectionAttempt = 0
     this.state.lastError = null
 
-    // Test connection methods first
     const connectionTests = await testAllConnectionMethods()
     this.log('Connection tests:', connectionTests)
 
     for (let urlAttempt = 0; urlAttempt < this.config.maxUrlAttempts; urlAttempt++) {
       const url = this.serverUrls[this.currentUrlIndex]
       
-      // Fix: Add null check for url parameter
       if (!url) {
         this.log(`No URL available at index ${this.currentUrlIndex}`)
         this.currentUrlIndex = (this.currentUrlIndex + 1) % this.serverUrls.length
@@ -106,11 +104,9 @@ export class ConnectionManager {
         return this.socket
       }
 
-      // Try next URL
       this.currentUrlIndex = (this.currentUrlIndex + 1) % this.serverUrls.length
     }
 
-    // All connection attempts failed
     this.log('All connection attempts failed, enabling fallback mode')
     this.enableFallbackMode()
     return null
@@ -124,7 +120,7 @@ export class ConnectionManager {
           transports: this.config.transports,
           autoConnect: this.config.autoConnect,
           forceNew: this.config.forceNew,
-          reconnection: false // We handle reconnection manually
+          reconnection: false
         })
 
         const connectionTimeout = setTimeout(() => {
@@ -170,12 +166,10 @@ export class ConnectionManager {
   private setupSocketEventHandlers(): void {
     if (!this.socket) return
 
-    // Relay all socket events to our event system
     this.socket.onAny((event: string, ...args: any[]) => {
       this.emitEvent(event, args.length === 1 ? args[0] : args)
     })
 
-    // Handle specific events
     this.socket.on('stream-started', (data: any) => {
       this.emitEvent('stream-started', data)
     })
@@ -201,7 +195,6 @@ export class ConnectionManager {
     
     this.emitEvent('disconnected', { reason })
 
-    // Attempt reconnection unless it was manual
     if (reason !== 'client disconnect') {
       this.scheduleReconnection()
     }
@@ -273,7 +266,6 @@ export class ConnectionManager {
     }
   }
 
-  // Public methods
   disconnect(): void {
     this.log('Manual disconnect')
     this.stopHealthCheck()
@@ -311,28 +303,32 @@ export class ConnectionManager {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, [])
     }
-    this.listeners.get(event)!.push(listener)
+    const eventListeners = this.listeners.get(event)
+    if (eventListeners) {
+      eventListeners.push(listener)
+    }
   }
 
   off(event: string, listener?: Function): void {
     if (!this.listeners.has(event)) return
 
     if (listener) {
-      const eventListeners = this.listeners.get(event)!
-      const index = eventListeners.indexOf(listener)
-      if (index > -1) {
-        eventListeners.splice(index, 1)
+      const eventListeners = this.listeners.get(event)
+      if (eventListeners) {
+        const index = eventListeners.indexOf(listener)
+        if (index > -1) {
+          eventListeners.splice(index, 1)
+        }
       }
     } else {
       this.listeners.delete(event)
     }
   }
 
-  // Additional methods needed by useConnection hook
   getConnectionHealth(): ConnectionHealth {
     return {
       quality: this.state.isConnected ? 'good' : 'poor',
-      latency: 0, // TODO: implement latency measurement
+      latency: 0,
       isConnected: this.state.isConnected,
       fallbackMode: this.state.fallbackMode,
       lastChecked: new Date().toISOString()
@@ -341,8 +337,8 @@ export class ConnectionManager {
 
   getNetworkStats(): NetworkStats {
     return {
-      online: navigator.onLine,
-      downloadSpeed: 0, // TODO: implement speed test
+      online: typeof navigator !== 'undefined' ? navigator.onLine : true,
+      downloadSpeed: 0,
       connectionType: 'unknown',
       latency: 0
     }
@@ -360,14 +356,12 @@ export class ConnectionManager {
   }
 
   async forceHealthCheck(): Promise<void> {
-    // Force a health check
     if (this.socket?.connected) {
       this.socket.emit('ping', Date.now())
     }
   }
 
   isMethodAvailable(method: string): boolean {
-    // Check if a connection method is available
     switch (method) {
       case 'websocket':
         return typeof WebSocket !== 'undefined'
@@ -385,7 +379,6 @@ export class ConnectionManager {
   }
 
   broadcastMessage(type: string, data: any): void {
-    // Broadcast message to other tabs via BroadcastChannel if available
     if (typeof BroadcastChannel !== 'undefined') {
       try {
         const channel = new BroadcastChannel('livestream-connection')
@@ -397,7 +390,6 @@ export class ConnectionManager {
     }
   }
 
-  // Getters
   isConnected(): boolean {
     return this.state.isConnected
   }
@@ -419,7 +411,5 @@ export class ConnectionManager {
   }
 }
 
-// Export singleton instance
 export const connectionManager = new ConnectionManager()
-
 export default ConnectionManager
