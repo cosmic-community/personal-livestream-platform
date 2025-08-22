@@ -50,6 +50,19 @@ export class StreamManager {
     this.setupSocketListeners()
   }
 
+  // Public methods to register callbacks - FIXED: Add these missing methods
+  onStateChange(callback: (state: BroadcasterState) => void): void {
+    this.config.onStateChange = callback
+  }
+
+  onError(callback: (error: StreamError) => void): void {
+    this.config.onError = callback
+  }
+
+  onViewerCountChange(callback: (count: number) => void): void {
+    this.config.onViewerCountChange = callback
+  }
+
   private setupSocketListeners() {
     // Viewer events
     socketManager.onViewerJoined((data) => {
