@@ -19,9 +19,12 @@ export async function POST(
     
     console.log('📝 Generating subtitles for asset:', id, 'track:', trackId)
     
-    // Generate subtitles using Mux API
-    const result = await muxClient.generateSubtitles(id, trackId, {
-      languageCode,
+    // Note: Using direct Mux SDK access for subtitle generation
+    // The generateSubtitles method is not available in the current wrapper
+    const result = await (muxClient as any).mux.Video.Assets.createTrack(id, {
+      type: 'text',
+      text_type: 'subtitles',
+      language_code: languageCode,
       name,
       passthrough: name
     })
@@ -45,8 +48,9 @@ export async function GET(
     const { id } = await params
     const muxClient = getMuxClient()
     
-    // Get asset tracks to see available subtitles
-    const tracks = await muxClient.getAssetTracks(id)
+    // Get asset tracks using direct Mux SDK access
+    const asset = await (muxClient as any).mux.Video.Assets.get(id)
+    const tracks = asset.tracks || []
     const subtitleTracks = tracks.filter((track: any) => 
       track.type === 'text' || track.type === 'subtitle'
     )

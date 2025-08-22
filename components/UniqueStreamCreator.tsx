@@ -9,7 +9,7 @@ interface StreamConfig {
   reconnectWindow: number
   newAssetSettings: {
     playbackPolicy: 'public' | 'signed'
-    mp4Support: 'none' | 'capped-1080p' | 'standard'
+    mp4Support: 'none' | 'standard' // Fixed: Remove 'capped-1080p' option
     normalizeAudio: boolean
   }
   subtitleSettings?: {
@@ -27,7 +27,7 @@ export default function UniqueStreamCreator() {
     reconnectWindow: 60,
     newAssetSettings: {
       playbackPolicy: 'public',
-      mp4Support: 'capped-1080p',
+      mp4Support: 'standard', // Fixed: Use valid option
       normalizeAudio: true
     },
     subtitleSettings: {
@@ -139,13 +139,12 @@ export default function UniqueStreamCreator() {
                   ...prev, 
                   newAssetSettings: {
                     ...prev.newAssetSettings,
-                    mp4Support: e.target.value as 'none' | 'capped-1080p' | 'standard'
+                    mp4Support: e.target.value as 'none' | 'standard' // Fixed: Remove invalid option
                   }
                 }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="none">None</option>
-                <option value="capped-1080p">Capped 1080p</option>
                 <option value="standard">Standard</option>
               </select>
             </div>
