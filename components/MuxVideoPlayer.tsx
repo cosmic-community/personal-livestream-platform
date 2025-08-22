@@ -1,8 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
-import Hls from 'hls.js'
-import { monitor, updateData } from 'mux-embed'
+import MuxPlayer from '@mux/mux-player-react'
 
 interface MuxVideoPlayerProps {
   playbackId: string
@@ -12,6 +11,7 @@ interface MuxVideoPlayerProps {
   controls?: boolean
   poster?: string
   className?: string
+  accentColor?: string
   onLoadStart?: () => void
   onLoadedData?: () => void
   onPlay?: () => void
@@ -28,6 +28,7 @@ export default function MuxVideoPlayer({
   controls = true,
   poster,
   className = '',
+  accentColor = '#fa50b5',
   onLoadStart,
   onLoadedData,
   onPlay,
@@ -35,218 +36,97 @@ export default function MuxVideoPlayer({
   onEnded,
   onError
 }: MuxVideoPlayerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const hlsRef = useRef<Hls | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [hasError, setHasError] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
-  const muxPlayerInitTime = useRef(Date.now())
 
-  useEffect(() => {
-    if (!videoRef.current || !playbackId) return
-
-    const video = videoRef.current
-    const hlsUrl = `https://stream.mux.com/${playbackId}.m3u8`
-    
-    console.log('🎥 Initializing Mux video player for:', playbackId)
+  const handleLoadStart = () => {
+    console.log('📡 Video load started')
     setIsLoading(true)
     setHasError(false)
+    onLoadStart?.()
+  }
 
-    // Check if HLS.js is supported
-    if (Hls.isSupported()) {
-      // Initialize HLS.js
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 90
-      })
-      hlsRef.current = hls
+  const handleLoadedData = () => {
+    console.log('✅ Video data loaded')
+    setIsLoading(false)
+    onLoadedData?.()
+  }
 
-      // Load the HLS stream
-      hls.loadSource(hlsUrl)
-      hls.attachMedia(video)
+  const handlePlay = () => {
+    console.log('▶️ Video play started')
+    setIsLoading(false)
+    onPlay?.()
+  }
 
-      // HLS.js error handling
-      hls.on(Hls.Events.ERROR, (event, data) => {
-        console.error('❌ HLS.js error:', data)
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              console.error('Fatal network error encountered, trying to recover...')
-              hls.startLoad()
-              break
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              console.error('Fatal media error encountered, trying to recover...')
-              hls.recoverMediaError()
-              break
-            default:
-              console.error('Fatal error, cannot recover')
-              setHasError(true)
-              setErrorMessage('Video playback failed. Please try again.')
-              onError?.(data)
-              break
-          }
-        }
-      })
+  const handlePause = () => {
+    console.log('⏸️ Video paused')
+    onPause?.()
+  }
 
-      // HLS.js manifest loaded
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        console.log('✅ HLS manifest parsed successfully')
-        setIsLoading(false)
-        
-        // Auto-play if enabled
-        if (autoPlay) {
-          video.play().catch(console.error)
-        }
-      })
+  const handleEnded = () => {
+    console.log('🏁 Video ended')
+    onEnded?.()
+  }
 
-      // Initialize Mux Data tracking
-      try {
-        monitor(video, {
-          debug: false,
-          hlsjs: hls,
-          Hls: Hls,
-          data: {
-            env_key: 'rp53rp6qs11209chk3qid8j44', // Your Mux environment key
-            // Player Metadata
-            player_name: 'Cosmic Mux Player',
-            player_version: '1.0.0',
-            player_init_time: muxPlayerInitTime.current,
-            // Video Metadata
-            video_id: playbackId,
-            video_title: title,
-            video_stream_type: 'on-demand', // or 'live' for live streams
-            // Site Metadata
-            viewer_user_id: '', // You can set user ID if available
-            experiment_name: '', // For A/B testing
-            sub_property_id: 'cosmic-livestream' // Your site identifier
-          }
-        })
-        console.log('✅ Mux Data tracking initialized')
-      } catch (error) {
-        console.error('❌ Failed to initialize Mux Data tracking:', error)
-      }
+  const handleError = (error: any) => {
+    console.error('❌ Video element error:', error)
+    setHasError(true)
+    setErrorMessage('Video playback error occurred.')
+    setIsLoading(false)
+    onError?.(error)
+  }
 
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // For Safari, use native HLS support
-      console.log('🍎 Using native HLS support (Safari)')
-      video.src = hlsUrl
-      
-      // Initialize Mux Data tracking for native HLS
-      try {
-        monitor(video, {
-          debug: false,
-          data: {
-            env_key: 'rp53rp6qs11209chk3qid8j44',
-            player_name: 'Cosmic Native Player',
-            player_version: '1.0.0',
-            player_init_time: muxPlayerInitTime.current,
-            video_id: playbackId,
-            video_title: title,
-            video_stream_type: 'on-demand',
-            sub_property_id: 'cosmic-livestream'
-          }
-        })
-        console.log('✅ Mux Data tracking initialized (native)')
-      } catch (error) {
-        console.error('❌ Failed to initialize Mux Data tracking:', error)
-      }
+  const handleCanPlay = () => {
+    console.log('✅ Video can play')
+    setIsLoading(false)
+    setHasError(false)
+  }
 
-      video.addEventListener('loadedmetadata', () => {
-        setIsLoading(false)
-      })
-    } else {
-      console.error('❌ HLS not supported in this browser')
-      setHasError(true)
-      setErrorMessage('Video format not supported in this browser.')
-    }
-
-    // Video event listeners - Fixed: Remove parameters to match expected signatures
-    const handleLoadStart = () => {
-      console.log('📡 Video load started')
-      onLoadStart?.()
-    }
-
-    const handleLoadedData = () => {
-      console.log('✅ Video data loaded')
-      setIsLoading(false)
-      onLoadedData?.()
-    }
-
-    const handlePlay = () => {
-      console.log('▶️ Video play started')
-      onPlay?.()
-    }
-
-    const handlePause = () => {
-      console.log('⏸️ Video paused')
-      onPause?.()
-    }
-
-    const handleEnded = () => {
-      console.log('🏁 Video ended')
-      onEnded?.()
-    }
-
-    const handleError = (e: Event) => {
-      console.error('❌ Video element error:', e)
-      setHasError(true)
-      setErrorMessage('Video playback error occurred.')
-      onError?.(e)
-    }
-
-    // Add event listeners
-    video.addEventListener('loadstart', handleLoadStart)
-    video.addEventListener('loadeddata', handleLoadedData)
-    video.addEventListener('play', handlePlay)
-    video.addEventListener('pause', handlePause)
-    video.addEventListener('ended', handleEnded)
-    video.addEventListener('error', handleError)
-
-    // Cleanup function
-    return () => {
-      console.log('🧹 Cleaning up Mux video player')
-      
-      // Remove event listeners
-      video.removeEventListener('loadstart', handleLoadStart)
-      video.removeEventListener('loadeddata', handleLoadedData)
-      video.removeEventListener('play', handlePlay)
-      video.removeEventListener('pause', handlePause)
-      video.removeEventListener('ended', handleEnded)
-      video.removeEventListener('error', handleError)
-
-      // Clean up HLS.js
-      if (hlsRef.current) {
-        hlsRef.current.destroy()
-        hlsRef.current = null
-      }
-    }
-  }, [playbackId, title, autoPlay, onLoadStart, onLoadedData, onPlay, onPause, onEnded, onError])
-
-  // Handle metadata updates for Mux tracking
-  useEffect(() => {
-    try {
-      if (title && playbackId) {
-        updateData({
-          video_title: title,
-          video_id: playbackId
-        })
-      }
-    } catch (error) {
-      console.warn('⚠️ Could not update Mux metadata:', error)
-    }
-  }, [title, playbackId])
+  if (!playbackId) {
+    return (
+      <div className={`relative bg-black rounded-lg overflow-hidden aspect-video ${className}`}>
+        <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center">
+          <div className="text-center text-white">
+            <div className="mb-4">
+              <svg className="w-16 h-16 mx-auto text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                <path d="M14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+              </svg>
+            </div>
+            <p className="text-lg font-semibold">No Playback ID</p>
+            <p className="text-sm text-gray-300">Please provide a valid Mux playback ID</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={`relative bg-black rounded-lg overflow-hidden ${className}`}>
-      <video
-        ref={videoRef}
-        controls={controls}
+      <MuxPlayer
+        playbackId={playbackId}
+        metadata={{
+          video_id: playbackId,
+          video_title: title,
+          viewer_user_id: 'anonymous-viewer'
+        }}
+        accentColor={accentColor}
+        autoPlay={autoPlay}
         muted={muted}
-        playsInline
+        controls={controls}
         poster={poster}
-        className="w-full h-full object-contain"
-        onContextMenu={(e) => e.preventDefault()} // Disable right-click menu
+        onLoadStart={handleLoadStart}
+        onLoadedData={handleLoadedData}
+        onPlay={handlePlay}
+        onPause={handlePause}
+        onEnded={handleEnded}
+        onError={handleError}
+        onCanPlay={handleCanPlay}
+        style={{
+          width: '100%',
+          height: '100%'
+        }}
       />
 
       {/* Loading overlay */}
@@ -274,7 +154,7 @@ export default function MuxVideoPlayer({
               onClick={() => {
                 setHasError(false)
                 setErrorMessage('')
-                window.location.reload()
+                setIsLoading(true)
               }}
               className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
             >

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useMux } from '@/hooks/useMux'
 import { getMuxStreamingService } from '@/lib/mux-streaming'
+import MuxLivePlayer from './MuxLivePlayer'
 
 interface MuxStream {
   id: string
@@ -40,6 +41,7 @@ export default function MuxStreamingDashboard() {
     hlsUrl?: string
     thumbnailUrl?: string
     isLive: boolean
+    playbackIds: Array<{ id: string; policy: string }>
   } | null>(null)
 
   const [showStreamKey, setShowStreamKey] = useState(false)
@@ -133,6 +135,14 @@ export default function MuxStreamingDashboard() {
     }
   }
 
+  // Get primary playback ID for the player
+  const getPrimaryPlaybackId = (): string | null => {
+    if (playbackInfo && playbackInfo.playbackIds.length > 0) {
+      return playbackInfo.playbackIds[0]?.id || null
+    }
+    return null
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -167,6 +177,28 @@ export default function MuxStreamingDashboard() {
                 Dismiss
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Live Player Preview */}
+      {activeStream && getPrimaryPlaybackId() && (
+        <div className="card">
+          <h2 className="text-xl font-semibold mb-4">Live Stream Preview</h2>
+          <div className="aspect-video bg-black rounded-lg overflow-hidden">
+            <MuxLivePlayer
+              playbackId={getPrimaryPlaybackId()!}
+              streamTitle="Live Stream Preview"
+              autoPlay={false}
+              muted={true}
+              accentColor="#3b82f6"
+              showViewerCount={true}
+              onStreamStart={() => console.log('🟢 Preview stream started')}
+              onStreamEnd={() => console.log('🔴 Preview stream ended')}
+            />
+          </div>
+          <div className="mt-2 text-sm text-gray-600">
+            This is how your stream will appear to viewers. Share the playback ID: <code className="bg-gray-100 px-1 rounded">{getPrimaryPlaybackId()}</code>
           </div>
         </div>
       )}
@@ -362,6 +394,21 @@ export default function MuxStreamingDashboard() {
                     {playbackInfo.isLive ? 'LIVE' : 'OFFLINE'}
                   </div>
                 </div>
+                
+                {playbackInfo.playbackIds.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600 w-24">Playback ID:</span>
+                    <code className="bg-gray-50 px-2 py-1 rounded text-sm flex-1">
+                      {playbackInfo.playbackIds[0]?.id}
+                    </code>
+                    <button
+                      onClick={() => copyToClipboard(playbackInfo.playbackIds[0]?.id || '')}
+                      className="btn btn-xs btn-secondary"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                )}
                 
                 {playbackInfo.hlsUrl && (
                   <div className="flex items-center gap-2">
@@ -559,7 +606,7 @@ export default function MuxStreamingDashboard() {
               </div>
               <div>
                 <h3 className="font-medium">Start Broadcasting</h3>
-                <p className="text-sm text-gray-600">Start your stream in your broadcasting software, and viewers can watch using the HLS playback URL.</p>
+                <p className="text-sm text-gray-600">Start your stream in your broadcasting software, and viewers can watch using the Mux Player with your playback ID.</p>
               </div>
             </div>
           </div>
