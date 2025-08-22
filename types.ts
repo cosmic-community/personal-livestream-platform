@@ -1,159 +1,68 @@
-export type StreamType = 'webcam' | 'screen' | 'combined' | 'both'
-
-export interface StreamSession {
-  id: string
-  title: string
-  slug?: string
-  type: string
-  created_at: string
-  modified_at?: string
-  description?: string
-  streamType?: StreamType
-  startTime?: string
-  endTime?: string
-  status: 'active' | 'ended' | 'scheduled' | 'published' | 'draft'
-  viewerCount?: number
-  duration?: number
-  thumbnailUrl?: string
-  recordingUrl?: string
-  metadata: {
-    description?: string
-    stream_type: StreamType
-    start_time: string
-    end_time?: string
-    viewer_count: number
-    peak_viewers?: number
-    duration?: number
-    thumbnail?: {
-      url: string
-      imgix_url: string
-    }
-    recording?: {
-      url: string
-      imgix_url: string
-    }
-    status: 'active' | 'ended' | 'scheduled' | 'starting' | 'live'
-    tags?: string[]
-    category?: string
-    is_featured?: boolean
-  }
+export interface StreamState {
+  isLive: boolean
+  isConnecting: boolean
+  streamType: 'webcam' | 'screen' | 'both'
+  webcamEnabled: boolean
+  screenEnabled: boolean
+  viewerCount: number
+  sessionId?: string
+  error?: string
+  lastUpdated: string
 }
+
+export type StreamType = 'webcam' | 'screen' | 'both'
 
 export interface StreamError {
   code: string
   message: string
   timestamp: string
   details?: any
-  browserInfo?: {
-    userAgent: string
-    platform: string
-    language: string
+}
+
+export function createStreamState(overrides?: Partial<StreamState>): StreamState {
+  return {
+    isLive: false,
+    isConnecting: false,
+    streamType: 'webcam',
+    webcamEnabled: false,
+    screenEnabled: false,
+    viewerCount: 0,
+    lastUpdated: new Date().toISOString(),
+    ...overrides
   }
-  context?: any
 }
 
-export interface StreamStats {
-  bytesReceived: number
-  bytesSent: number
-  packetsLost: number
-  jitter: number
-  rtt: number
-  bandwidth: number
-  quality: 'excellent' | 'good' | 'fair' | 'poor'
-  viewerCount: number
-  duration: number
-}
-
-export interface MediaConstraints {
-  video?: MediaTrackConstraints | boolean
-  audio?: MediaTrackConstraints | boolean
-}
-
-// Main StreamState interface - now includes ALL required properties
-export interface StreamState {
-  isStreaming: boolean
-  isLive: boolean
-  isConnecting: boolean
-  streamType: StreamType
-  webcamEnabled: boolean
-  screenEnabled: boolean
-  viewerCount: number
-  streamQuality: string
-  currentSession?: StreamSession
-  mediaStream?: MediaStream
-  peerConnections: Map<string, RTCPeerConnection>
-  stats: StreamStats
-  errors: StreamError[]
-  sessionId?: string
-  error?: string
-}
-
-// BroadcasterState now extends StreamState for consistency
-export interface BroadcasterState extends StreamState {}
-
-export interface ViewerState {
-  isWatching?: boolean
-  isConnected: boolean
-  isConnecting: boolean
-  streamAvailable: boolean
-  viewerCount: number
-  streamQuality: string
-  error?: string
-  currentSession?: StreamSession
-  remoteStream?: MediaStream
-  peerConnection?: RTCPeerConnection
-  connectionState?: RTCPeerConnectionState
-  stats?: StreamStats
-}
-
-export interface StreamControlsProps {
-  streamState: StreamState
-  onStartStream: (type: StreamType) => Promise<void>
-  onStopStream: () => void
-  onToggleWebcam: () => Promise<void>
-  onToggleScreen: () => Promise<void>
-}
-
-export interface StreamStatsProps {
-  session?: StreamSession
-  isLive: boolean
-  viewerCount: number
-}
-
-export interface CosmicStreamSession {
+// Cosmic CMS types
+export interface CosmicObject {
   id: string
   title: string
   slug: string
-  status: 'published' | 'draft'
+  content?: string
+  metadata?: any
   created_at: string
   modified_at: string
+  status: string
+}
+
+export interface CosmicResponse<T = any> {
+  object?: T
+  objects: T[]
+  total: number
+}
+
+export interface StreamSession extends CosmicObject {
   metadata: {
-    description?: string
-    stream_type: StreamType
     start_time: string
     end_time?: string
+    stream_type: StreamType
     viewer_count: number
-    duration?: number
-    thumbnail?: {
-      url: string
-      imgix_url: string
-    }
-    recording?: {
-      url: string
-      imgix_url: string
-    }
-    status: 'active' | 'ended' | 'scheduled'
-    tags?: string[]
-    category?: string
-    is_featured?: boolean
+    peak_viewers: number
+    duration: number
+    status: 'starting' | 'live' | 'ended'
   }
 }
 
-export interface StreamAnalytics {
-  id: string
-  title: string
-  type: string
-  created_at: string
+export interface StreamAnalytics extends CosmicObject {
   metadata: {
     session_id: string
     viewer_joined_at: string
@@ -164,10 +73,7 @@ export interface StreamAnalytics {
   }
 }
 
-export interface StreamSettings {
-  id: string
-  title: string
-  type: string
+export interface StreamSettings extends CosmicObject {
   metadata: {
     default_stream_type: StreamType
     auto_start_enabled: boolean
@@ -177,111 +83,5 @@ export interface StreamSettings {
       email_on_stream_start: boolean
       email_on_viewer_milestone: boolean
     }
-  }
-}
-
-export interface CosmicResponse<T = any> {
-  object?: T
-  objects?: T[]
-  total?: number
-}
-
-export interface ConnectionQualityStats {
-  bytesReceived: number
-  bytesSent: number
-  packetsLost: number
-  jitter: number
-  rtt: number
-  bandwidth: number
-  quality: 'excellent' | 'good' | 'fair' | 'poor'
-}
-
-export interface MediaDeviceInfo {
-  deviceId: string
-  kind: MediaDeviceKind
-  label: string
-  groupId: string
-}
-
-export interface NetworkConnectivity {
-  online: boolean
-  latency: number
-  canReachStun: boolean
-  downloadSpeed?: number
-}
-
-export interface StreamConfiguration {
-  video: {
-    width: { ideal: number; max: number; min: number }
-    height: { ideal: number; max: number; min: number }
-    frameRate: { ideal: number; max: number; min: number }
-    aspectRatio?: { ideal: number }
-    cursor?: string
-    displaySurface?: string
-  }
-  audio: {
-    echoCancellation: boolean
-    noiseSuppression: boolean
-    autoGainControl: boolean
-    sampleRate?: { ideal: number }
-    channelCount?: { ideal: number }
-  } | boolean
-}
-
-export interface StreamingCapabilities {
-  hasCamera: boolean
-  hasMicrophone: boolean
-  hasScreen: boolean
-  devices: MediaDeviceInfo[]
-  permissions: {
-    camera: PermissionState | 'unknown'
-    microphone: PermissionState | 'unknown'
-  }
-  webrtcSupported: boolean
-  networkQuality: NetworkConnectivity
-}
-
-// Custom WebRTC message interfaces
-export interface WebRTCOffer extends RTCSessionDescriptionInit {
-  offer?: RTCSessionDescriptionInit
-  from?: string
-}
-
-export interface WebRTCAnswer extends RTCSessionDescriptionInit {
-  answer?: RTCSessionDescriptionInit
-  from?: string
-}
-
-export interface WebRTCIceCandidate extends RTCIceCandidateInit {
-  from?: string
-}
-
-// Helper function to create complete StreamState object
-export function createStreamState(overrides: Partial<StreamState> = {}): StreamState {
-  const defaultStats: StreamStats = {
-    bytesReceived: 0,
-    bytesSent: 0,
-    packetsLost: 0,
-    jitter: 0,
-    rtt: 0,
-    bandwidth: 0,
-    quality: 'poor',
-    viewerCount: 0,
-    duration: 0
-  }
-
-  return {
-    isStreaming: false,
-    isLive: false,
-    isConnecting: false,
-    streamType: 'webcam',
-    webcamEnabled: false,
-    screenEnabled: false,
-    viewerCount: 0,
-    streamQuality: 'auto',
-    peerConnections: new Map<string, RTCPeerConnection>(),
-    stats: defaultStats,
-    errors: [],
-    ...overrides
   }
 }

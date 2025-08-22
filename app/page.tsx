@@ -1,9 +1,9 @@
-import MuxStreamingDashboard from '@/components/MuxStreamingDashboard'
+import SimpleDashboard from '@/components/SimpleDashboard'
 
 export default function Home() {
   return (
-    <main className="container mx-auto px-4 py-8">
-      <MuxStreamingDashboard />
+    <main className="min-h-screen bg-gray-50">
+      <SimpleDashboard />
     </main>
   )
 }

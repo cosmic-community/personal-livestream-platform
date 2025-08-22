@@ -11,9 +11,9 @@ module.exports = {
         background: 'var(--background)',
         foreground: 'var(--foreground)',
       },
-      fontFamily: {
-        sans: ['Inter', 'sans-serif'],
-      },
+      animation: {
+        'spin-slow': 'spin 3s linear infinite',
+      }
     },
   },
   plugins: [],
