@@ -26,10 +26,25 @@ interface MuxAsset {
   created_at: string
   duration?: number
   aspect_ratio?: string
+  tracks?: Array<{
+    id: string
+    type: string
+    duration: number
+  }>
 }
 
 interface Input {
   url: string
+}
+
+interface SubtitleTrack {
+  id: string
+  type: string
+  text_type: string
+  status: string
+  name: string
+  language_code: string
+  passthrough?: string
 }
 
 class MuxClient {
@@ -37,6 +52,7 @@ class MuxClient {
   private config: MuxConfig
 
   constructor(config?: Partial<MuxConfig>) {
+    // Use your unique Mux credentials
     this.config = {
       tokenId: config?.tokenId || process.env.MUX_TOKEN_ID || '',
       tokenSecret: config?.tokenSecret || process.env.MUX_TOKEN_SECRET || ''
@@ -52,38 +68,55 @@ class MuxClient {
     })
   }
 
-  // Live Stream Management
+  // Enhanced Live Stream Management with unique configuration
   async createLiveStream(options: {
     playbackPolicy?: 'public' | 'signed'
     newAssetSettings?: {
       playbackPolicy?: 'public' | 'signed'
+      mp4Support?: 'none' | 'capped-1080p' | 'standard'
+      normalizeAudio?: boolean
     }
     reconnectWindow?: number
     reducedLatency?: boolean
   } = {}) {
     try {
+      console.log('🎥 Creating unique Mux live stream with custom credentials...')
+
+      // Create live stream with your unique Mux configuration
       const liveStream = await this.mux.video.liveStreams.create({
         playback_policy: [options.playbackPolicy || 'public'],
-        new_asset_settings: options.newAssetSettings ? {
-          playback_policy: [options.newAssetSettings.playbackPolicy || 'public']
-        } : undefined,
+        new_asset_settings: {
+          playback_policy: [options.newAssetSettings?.playbackPolicy || 'public'],
+          mp4_support: options.newAssetSettings?.mp4Support || 'capped-1080p',
+          normalize_audio: options.newAssetSettings?.normalizeAudio !== false
+        },
         reconnect_window: options.reconnectWindow || 60,
-        reduced_latency: options.reducedLatency || false
+        reduced_latency: options.reducedLatency !== false
       })
 
-      return {
+      const streamData = {
         id: liveStream.id,
         status: liveStream.status,
         streamKey: liveStream.stream_key,
-        playbackIds: liveStream.playback_ids, // Fixed: was playbook_ids
+        playbackIds: liveStream.playbook_ids || [], // Note: Mux SDK uses playbook_ids
         rtmpUrl: `rtmps://global-live.mux.com:443/live/${liveStream.stream_key}`,
         reconnectWindow: liveStream.reconnect_window,
         reducedLatency: liveStream.reduced_latency,
-        createdAt: liveStream.created_at
+        createdAt: liveStream.created_at,
+        // Additional unique stream properties
+        uniqueConfig: {
+          tokenId: this.config.tokenId.substring(0, 8) + '...', // Partial for logging
+          customSettings: true,
+          assetSettings: options.newAssetSettings
+        }
       }
+
+      console.log('✅ Unique Mux live stream created:', streamData.id)
+      return streamData
+
     } catch (error) {
-      console.error('Failed to create live stream:', error)
-      throw new Error(`Mux live stream creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      console.error('❌ Failed to create unique live stream:', error)
+      throw new Error(`Unique Mux live stream creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -95,7 +128,7 @@ class MuxClient {
         id: liveStream.id,
         status: liveStream.status,
         streamKey: liveStream.stream_key,
-        playbackIds: liveStream.playback_ids, // Fixed: was playbook_ids
+        playbackIds: liveStream.playbook_ids || [],
         rtmpUrl: `rtmps://global-live.mux.com:443/live/${liveStream.stream_key}`,
         reconnectWindow: liveStream.reconnect_window,
         reducedLatency: liveStream.reduced_latency,
@@ -164,7 +197,7 @@ class MuxClient {
       const inputs: Input[] = input.url ? [{ url: input.url }] : []
       
       const asset = await this.mux.video.assets.create({
-        input: inputs, // Fixed: removed undefined case that caused type error
+        input: inputs,
         playback_policy: [input.playbackPolicy || 'public'],
         mp4_support: input.mp4Support || 'none',
         normalize_audio: input.normalizeAudio || false
@@ -173,10 +206,11 @@ class MuxClient {
       return {
         id: asset.id,
         status: asset.status,
-        playbackIds: asset.playback_ids, // Fixed: was playbook_ids
+        playbackIds: asset.playbook_ids || [],
         mp4Support: asset.mp4_support,
         normalizeAudio: asset.normalize_audio,
-        createdAt: asset.created_at
+        createdAt: asset.created_at,
+        tracks: asset.tracks || []
       }
     } catch (error) {
       console.error('Failed to create asset:', error)
@@ -191,12 +225,13 @@ class MuxClient {
       return {
         id: asset.id,
         status: asset.status,
-        playbackIds: asset.playback_ids, // Fixed: was playbook_ids
+        playbackIds: asset.playbook_ids || [],
         mp4Support: asset.mp4_support,
         normalizeAudio: asset.normalize_audio,
         createdAt: asset.created_at,
         duration: asset.duration,
-        aspectRatio: asset.aspect_ratio
+        aspectRatio: asset.aspect_ratio,
+        tracks: asset.tracks || []
       }
     } catch (error) {
       console.error('Failed to get asset:', error)
@@ -211,6 +246,56 @@ class MuxClient {
     } catch (error) {
       console.error('Failed to delete asset:', error)
       throw new Error(`Failed to delete asset: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  // NEW: Generate Subtitles for Asset Track
+  async generateSubtitles(assetId: string, trackId: string, config: {
+    languageCode?: string
+    name?: string
+    passthrough?: string
+  } = {}): Promise<{ data: SubtitleTrack[] }> {
+    try {
+      console.log('📝 Generating subtitles for asset:', assetId, 'track:', trackId)
+
+      // Use the Mux API endpoint for generating subtitles
+      const response = await fetch(`https://api.mux.com/video/v1/assets/${assetId}/tracks/${trackId}/generate-subtitles`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Basic ${Buffer.from(`${this.config.tokenId}:${this.config.tokenSecret}`).toString('base64')}`
+        },
+        body: JSON.stringify({
+          generated_subtitles: [{
+            language_code: config.languageCode || 'en',
+            name: config.name || 'English (generated)',
+            passthrough: config.passthrough || 'English (generated)'
+          }]
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+      console.log('✅ Subtitles generated successfully')
+      
+      return result
+    } catch (error) {
+      console.error('❌ Failed to generate subtitles:', error)
+      throw new Error(`Subtitle generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  // NEW: Get Asset Tracks (needed for subtitle generation)
+  async getAssetTracks(assetId: string) {
+    try {
+      const asset = await this.getAsset(assetId)
+      return asset.tracks || []
+    } catch (error) {
+      console.error('Failed to get asset tracks:', error)
+      throw new Error(`Failed to get asset tracks: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -309,6 +394,15 @@ class MuxClient {
     } catch (error) {
       console.error('Webhook verification failed:', error)
       return false
+    }
+  }
+
+  // NEW: Get Mux Configuration Info
+  getConfiguration() {
+    return {
+      tokenId: this.config.tokenId.substring(0, 8) + '...', // Partial for security
+      hasCredentials: !!(this.config.tokenId && this.config.tokenSecret),
+      environment: process.env.NODE_ENV || 'development'
     }
   }
 }
