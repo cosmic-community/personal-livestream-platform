@@ -8,15 +8,83 @@ export interface StreamState {
   sessionId?: string
   error?: string
   lastUpdated: string
+  // Additional properties for extended functionality
+  isStreaming?: boolean
+  streamQuality?: string
+  currentSession?: StreamSession | null
+  mediaStream?: MediaStream | null
+  peerConnections?: Map<string, RTCPeerConnection>
+  stats?: StreamStats
+  errors?: StreamError[]
 }
 
-export type StreamType = 'webcam' | 'screen' | 'both'
+export type StreamType = 'webcam' | 'screen' | 'both' | 'combined'
 
 export interface StreamError {
   code: string
   message: string
   timestamp: string
   details?: any
+  context?: any // Added missing context property
+}
+
+// Added missing BroadcasterState interface
+export interface BroadcasterState extends StreamState {
+  isStreaming: boolean
+  streamQuality: string
+  currentSession: StreamSession | null
+  mediaStream: MediaStream | null
+  peerConnections: Map<string, RTCPeerConnection>
+  stats: StreamStats
+  errors: StreamError[]
+}
+
+// Added missing StreamStats interface
+export interface StreamStats {
+  totalBytesReceived: number
+  totalBytesSent: number
+  packetLoss: number
+  connectionQuality: 'excellent' | 'good' | 'fair' | 'poor'
+  averageBitrate: number
+  frameRate: number
+  resolution: string
+  latency: number
+}
+
+// Added missing StreamStatsProps interface
+export interface StreamStatsProps {
+  session: StreamSession | null
+  isLive: boolean
+  viewerCount: number
+}
+
+// Added missing ViewerState interface
+export interface ViewerState {
+  isConnected: boolean
+  isConnecting: boolean
+  streamAvailable: boolean
+  viewerCount: number
+  streamQuality: string
+  error?: string
+}
+
+// Added missing WebRTC types
+export interface WebRTCOffer {
+  offer: RTCSessionDescriptionInit
+  from?: string
+  socketId?: string
+}
+
+export interface WebRTCAnswer {
+  answer: RTCSessionDescriptionInit
+  from?: string
+  socketId?: string
+}
+
+export interface WebRTCIceCandidate {
+  candidate: RTCIceCandidateInit
+  from?: string
+  socketId?: string
 }
 
 export function createStreamState(overrides?: Partial<StreamState>): StreamState {

@@ -46,21 +46,23 @@ export function useStream(config: UseStreamConfig = {}) {
         onStateChange: (state: BroadcasterState) => {
           // Convert BroadcasterState to StreamState - Fixed: Include all required properties
           const streamState: StreamState = {
-            isStreaming: state.isStreaming,
             isLive: state.isLive,
             isConnecting: state.isConnecting,
             streamType: state.streamType,
             webcamEnabled: state.webcamEnabled,
             screenEnabled: state.screenEnabled,
             viewerCount: state.viewerCount,
+            sessionId: state.currentSession?.id,
+            error: state.errors.length > 0 ? state.errors[state.errors.length - 1]?.message : undefined,
+            lastUpdated: state.lastUpdated,
+            // Additional properties for extended functionality
+            isStreaming: state.isStreaming,
             streamQuality: state.streamQuality,
             currentSession: state.currentSession,
             mediaStream: state.mediaStream,
             peerConnections: state.peerConnections,
             stats: state.stats,
-            errors: state.errors,
-            sessionId: state.currentSession?.id,
-            error: state.errors.length > 0 ? state.errors[state.errors.length - 1]?.message : undefined
+            errors: state.errors
           }
           setStreamState(streamState)
           config.onStateChange?.(state)

@@ -47,9 +47,11 @@ export class StreamingCore {
   }
 
   private checkBrowserSupport(): boolean {
+    // Fixed: Check if functions exist before calling them
     return !!(
       navigator.mediaDevices &&
       navigator.mediaDevices.getUserMedia &&
+      typeof navigator.mediaDevices.getUserMedia === 'function' &&
       window.MediaRecorder
     )
   }

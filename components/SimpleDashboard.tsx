@@ -94,7 +94,9 @@ export default function SimpleDashboard() {
       setStreams(prev => prev.filter(s => s.id !== streamId))
       
       if (activeStream?.id === streamId) {
-        setActiveStream(streams.length > 1 ? streams[1] : null)
+        // Fixed: Handle possibly undefined activeStream and streams array access
+        const remainingStreams = streams.filter(s => s.id !== streamId)
+        setActiveStream(remainingStreams.length > 0 ? remainingStreams[0] : null)
       }
       
     } catch (err) {
@@ -260,7 +262,8 @@ export default function SimpleDashboard() {
           <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
             <h2 className="text-xl font-semibold mb-4">Live Preview</h2>
             
-            {activeStream && activeStream.playbackIds.length > 0 ? (
+            {/* Fixed: Add proper null checks for activeStream and playbackIds */}
+            {activeStream && activeStream.playbackIds && activeStream.playbackIds.length > 0 ? (
               <div className="space-y-4">
                 <MuxLivePlayer
                   playbackId={activeStream.playbackIds[0].id}

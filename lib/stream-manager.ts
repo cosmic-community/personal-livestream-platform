@@ -22,7 +22,7 @@ interface StreamManagerConfig {
 
 export class StreamManager {
   private config: StreamManagerConfig
-  private state: BroadcasterState = createStreamState() as BroadcasterState
+  private state: BroadcasterState
 
   private localStreams: Map<StreamType, MediaStream> = new Map()
   private combinedStream: MediaStream | null = null
@@ -48,6 +48,27 @@ export class StreamManager {
       onStateChange: config.onStateChange,
       onError: config.onError,
       onViewerCountChange: config.onViewerCountChange
+    }
+
+    // Fixed: Initialize state as BroadcasterState with all required properties
+    this.state = {
+      ...createStreamState(),
+      isStreaming: false,
+      streamQuality: 'medium',
+      currentSession: null,
+      mediaStream: null,
+      peerConnections: new Map<string, RTCPeerConnection>(),
+      stats: {
+        totalBytesReceived: 0,
+        totalBytesSent: 0,
+        packetLoss: 0,
+        connectionQuality: 'good',
+        averageBitrate: 0,
+        frameRate: 0,
+        resolution: '720p',
+        latency: 0
+      },
+      errors: []
     }
 
     this.onStateChangeCb = config.onStateChange
@@ -133,7 +154,6 @@ export class StreamManager {
           break
 
         case 'both':
-        case 'combined':
           const webcamStream = await this.getWebcamStream()
           const screenStream = await this.getScreenStream()
           
@@ -145,6 +165,22 @@ export class StreamManager {
             this.state.screenEnabled = true
           } else {
             throw new Error('Failed to get both webcam and screen streams')
+          }
+          break
+
+        case 'combined':
+          // Fixed: Handle 'combined' case same as 'both'
+          const combinedWebcamStream = await this.getWebcamStream()
+          const combinedScreenStream = await this.getScreenStream()
+          
+          if (combinedWebcamStream && combinedScreenStream) {
+            this.localStreams.set('webcam', combinedWebcamStream)
+            this.localStreams.set('screen', combinedScreenStream)
+            mediaStream = combineStreams([combinedWebcamStream, combinedScreenStream])
+            this.state.webcamEnabled = true
+            this.state.screenEnabled = true
+          } else {
+            throw new Error('Failed to get combined streams')
           }
           break
 
@@ -212,8 +248,26 @@ export class StreamManager {
         this.combinedStream = null
       }
 
-      // Reset state - Fixed: Use createStreamState to ensure all required properties
-      this.state = createStreamState() as BroadcasterState
+      // Reset state - Fixed: Use proper BroadcasterState structure
+      this.state = {
+        ...createStreamState(),
+        isStreaming: false,
+        streamQuality: 'medium',
+        currentSession: null,
+        mediaStream: null,
+        peerConnections: new Map<string, RTCPeerConnection>(),
+        stats: {
+          totalBytesReceived: 0,
+          totalBytesSent: 0,
+          packetLoss: 0,
+          connectionQuality: 'good',
+          averageBitrate: 0,
+          frameRate: 0,
+          resolution: '720p',
+          latency: 0
+        },
+        errors: []
+      }
 
       this.emitStateChange()
       this.log('Stream stopped successfully')
@@ -346,6 +400,7 @@ export class StreamManager {
     }
   }
 
+  // Fixed: Add proper type annotations for parameters
   private handleConnectionStats(socketId: string, stats: RTCStatsReport): void {
     // Process connection quality statistics
     let totalBytesReceived = 0
