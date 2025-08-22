@@ -151,7 +151,6 @@ export default function MuxLivePlayer({
         accentColor={accentColor}
         autoPlay={autoPlay}
         muted={muted}
-        controls={true}
         onLoadStart={handleLoadStart}
         onLoadedData={handleLoadedData}
         onPlay={handlePlay}

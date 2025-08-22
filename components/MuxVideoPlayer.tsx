@@ -114,7 +114,6 @@ export default function MuxVideoPlayer({
         accentColor={accentColor}
         autoPlay={autoPlay}
         muted={muted}
-        controls={controls}
         poster={poster}
         onLoadStart={handleLoadStart}
         onLoadedData={handleLoadedData}
